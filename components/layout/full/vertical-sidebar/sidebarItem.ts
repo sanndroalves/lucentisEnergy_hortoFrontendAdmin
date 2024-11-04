@@ -75,9 +75,8 @@ const sidebarItem: menu[] = [
     {
         title: 'Lista de Rateio',
         icon: FileIcon,                               
-        to: '/',
-        disabled: true,
-        chip: 'NOVO'
+        to: '/', 
+        chip: '★'
     },
     
     { header: 'GERENCIAMENTO' },
