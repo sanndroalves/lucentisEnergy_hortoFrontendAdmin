@@ -1,6 +1,6 @@
 import {
     ApertureIcon,
-    CopyIcon,
+    CopyIcon, FileIcon,
     LayoutDashboardIcon, PlugIcon, BuildingIcon, FilePowerIcon, BoltIcon, ToolIcon, RobotIcon, BulbIcon, ChartArrowsVerticalIcon, ChartPie2Icon, ClipboardCheckIcon
 } from 'vue-tabler-icons';
 
@@ -71,6 +71,13 @@ const sidebarItem: menu[] = [
         title: 'Prédios Públicos',
         icon: BuildingIcon,                               
         to: '/predios/'
+    },
+    {
+        title: 'Lista de Rateio',
+        icon: FileIcon,                               
+        to: '/',
+        disabled: true,
+        chip: 'NOVO'
     },
     
     { header: 'GERENCIAMENTO' },
