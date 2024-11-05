@@ -1,6 +1,6 @@
 import {
     ApertureIcon,
-    CopyIcon, FileIcon,
+    CopyIcon, FileIcon, FilesIcon,
     LayoutDashboardIcon, PlugIcon, BuildingIcon, FilePowerIcon, BoltIcon, ToolIcon, RobotIcon, BulbIcon, ChartArrowsVerticalIcon, ChartPie2Icon, ClipboardCheckIcon
 } from 'vue-tabler-icons';
 
@@ -36,13 +36,17 @@ const sidebarItem: menu[] = [
     {
         title: 'Check-List',
         icon: ClipboardCheckIcon,
-        to: '/checklist/'
+        to: '/checklist/', 
+        chip: '★',
+        chipColor: 'primary',
     },
 
     {
         title: 'Gráficos',
         icon: ChartPie2Icon,
-        to: '/graficos/'
+        to: '/graficos/', 
+        chip: '★',
+        chipColor: 'primary',
     },
     {
         title: 'Manutenções',
@@ -58,14 +62,18 @@ const sidebarItem: menu[] = [
     {
         title: 'Análises',
         icon: ChartArrowsVerticalIcon,
-        to: '/analises/'
+        to: '/analises/', 
+        chip: '★',
+        chipColor: 'primary',
     },
      
     { header: 'UNIDADES CONSUMIDORAS' },
     {
-        title: 'Iluminação Pública',
+        title: 'CIP',
         icon: BulbIcon,                               
-        to: '/iluminacao/'
+        to: '/iluminacao/', 
+        chip: '★',
+        chipColor: 'primary',
     },
     {
         title: 'Prédios Públicos',
@@ -74,9 +82,11 @@ const sidebarItem: menu[] = [
     },
     {
         title: 'Lista de Rateio',
-        icon: FileIcon,                               
-        to: '/', 
-        chip: '★'
+        icon: FilesIcon,                               
+        to: '/lista/', 
+        chip: '★',
+        chipColor: 'primary',
+        disabled: true,
     },
     
     { header: 'GERENCIAMENTO' },
@@ -86,9 +96,12 @@ const sidebarItem: menu[] = [
         to: '/relatorios/'
     },
     {
-        title: 'Contas (Manu.)',
+        title: 'Contas',
         icon: RobotIcon,                               
-        to: '/contas/'
+        to: '/contas/',
+        chip: '[MANUT]',
+        chipColor: 'error',
+        disabled: true
     },
     
     // {

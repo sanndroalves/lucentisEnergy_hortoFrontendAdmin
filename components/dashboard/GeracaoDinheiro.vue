@@ -64,7 +64,6 @@ const calcularSomaPorMes = (relatorios) => {
         
         somaPorMes[chave] += parseInt(valorInjTUSD) + parseInt(valorInjTE);
     });
-    console.log("MES:", somaPorMes)
     return somaPorMes;
 };
 
@@ -80,7 +79,6 @@ const calcularSomaPorAno = (relatorios) => {
         
         somaPorAno[ano] += parseInt(valorInjTUSD) + parseInt(valorInjTE);
     });
-    console.log("SOMA ANUAL:", somaPorAno)
     return somaPorAno;
 };
 
@@ -93,11 +91,13 @@ const mudarAno = () =>{
 
 }
 const carregarDados = async (ano) => {
-    const { data: relatorioPesquisa } = await useFetch(`${API_BASE_URL}/relatoriocompensacao?ano=${ano}&ligacao=L`);
+    const { data: relatorioPesquisa } = await useFetch(`${API_BASE_URL}/relatoriocompensacao?ano=${ano}`);
     novaLista.value = calcularSomaPorMes(relatorioPesquisa._value);
     totalAnual.value = calcularSomaPorAno(relatorioPesquisa._value)
     somaTotalAnual.value = Object.values(totalAnual.value).reduce((acc, curr) => acc + curr, 0);
 }
+
+carregarDados(anoId.value)
 
  
 
@@ -122,7 +122,7 @@ const areaChart = computed(() => {
                     <v-avatar class="bg-lightsuccess text-success mb-1 mr-2" size="50">
                                 <CashIcon size="28" />
                     </v-avatar>
-                     Análise monetária compensação
+                     Compensação (R$)
                 </v-card-title>
                 <v-btn size="large" icon @click="mudarAno" class="bg-success">
                     <v-avatar size="large" class="text-white">

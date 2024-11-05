@@ -20,17 +20,17 @@ import Irregular from "@/components/dashboard/Irregular.vue";
 import Alerta from "@/components/dashboard/Alerta.vue"; 
 
 const { data: usinas } = await useFetch(`${API_BASE_URL}/usina/`); 
-const { data: unidades } = await useFetch( `${API_BASE_URL}/unidadecompensacao?status=L`);
-const { data: cip } = await useFetch( `${API_BASE_URL}/unidadecompensacao`);
+const { data: unidades } = await useFetch( `${API_BASE_URL}/unidadecompensacao`); 
 const { data: relatorios } = await useFetch(`${API_BASE_URL}/relatoriocompensacao/`);
 const { data: manutencoes } = await useFetch(`${API_BASE_URL}/manutencao/`);  
 
-const valorIluminacao = cip.value.filter(item => item.secretaria == 'I' || item.secretaria == 'P') 
+const valorIluminacao = unidades.value.filter(item => item.secretaria == 'I' || item.secretaria == 'P') 
 const valoresPredios = unidades.value.filter(item => item.secretaria == 'E' || item.secretaria == 'S' || item.secretaria == 'O')
+const valoresUnidadesCompensa = unidades.value.filter(item => item.status == 'L')
   
 </script>
 <template>
-    <v-overlay
+    <!-- <v-overlay
       :model-value="overlay"
       class="align-center justify-center"
     >
@@ -39,7 +39,7 @@ const valoresPredios = unidades.value.filter(item => item.secretaria == 'E' || i
         size="64"
         indeterminate
       ></v-progress-circular>
-    </v-overlay>
+    </v-overlay> -->
     <v-row>
     <div
       class="v-card v-theme--BLUE_THEME v-card--density-default elevation-10 rounded-md v-card--variant-elevated bg-lightprimary elevation-0 rounded-md mb-8"
@@ -142,7 +142,7 @@ const valoresPredios = unidades.value.filter(item => item.secretaria == 'E' || i
                     Unidades
                   </div>
                   <h4 class="text-h4 mt-1 text-primary">
-                    {{ unidades.length }}
+                    {{ valoresUnidadesCompensa.length }}
                   </h4>
                 </div>
               </div>
@@ -216,7 +216,7 @@ const valoresPredios = unidades.value.filter(item => item.secretaria == 'E' || i
     
     </v-col>
     <v-col class="text-center mt-2">
-      <p class="text-muted">Desenvolvido por AleTech</p>
+      <p class="text-muted">Desenvolvido por AleTechLab.</p>
     </v-col>
   </v-row>
 </template>

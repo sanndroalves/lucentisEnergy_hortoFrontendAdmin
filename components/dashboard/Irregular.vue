@@ -164,7 +164,7 @@
     }
 </script>
 
-<template>
+<!--<template>
     <div>
             <div
               class="v-card v-theme--BLUE_THEME v-card--density-default elevation-10 rounded-md v-card--variant-elevated"
@@ -202,4 +202,50 @@
               </div><span class="v-card__underlay"></span>
             </div>
           </div> 
+</template> -->
+
+<!-- TEMPLATE OFICIAL -->
+<template>
+  <div>
+    <v-expansion-panels>
+      <v-expansion-panel>
+        <v-expansion-panel-title>
+          <div class="d-flex flex-column align-items-start">
+            <div class="d-flex align-items-center">
+              <v-avatar class="bg-lightwarning text-warning mb-1 mr-2" size="40">
+                <BoltIcon size="30" />
+              </v-avatar>
+              <b style="font-size: 18px; margin: 10px;">Déficit Gerações</b>
+              <v-chip color="warning" style="font-size: 12px; padding: 4px; height: 20px; margin-top: 10px;">{{usinasProcuradas.length}}</v-chip>
+            </div>
+            <div class="mt-1 text-subtitle-1 text-medium-emphasis">
+              Gerações irregulares (+3 meses)
+            </div>
+          </div>
+        </v-expansion-panel-title>
+
+        <v-expansion-panel-text>
+          <div v-for="usina in usinasProcuradas" :key="usina.id" class="mt-5">
+            <div class="d-flex align-items-center justify-content-between mt-2">
+              <div class="v-avatar bg-lightwarning rounded-md" style="width: 40px; height: 40px">
+                <AlertTriangleIcon size="22" class="text-warning" />
+              </div>
+              <div class="pl-4 mt-n1 flex-grow-1">
+                <h5 class="text-h6">{{ usina.uc }}</h5>
+                <h6 class="text-subtitle-1 text-medium-emphasis">{{ usina.nome }}</h6>
+              </div>
+              <div style="width: 40px;">
+                <v-btn @click="removerIndica(usina.id)" size="20" icon class="bg-warning">
+                  <v-avatar size="20" class="text-white">
+                    <XIcon size="15" />
+                  </v-avatar>
+                  <v-tooltip activator="parent" location="bottom">Remover Indicação</v-tooltip>
+                </v-btn>
+              </div>
+            </div>
+          </div>
+        </v-expansion-panel-text>
+      </v-expansion-panel>
+    </v-expansion-panels>
+  </div>
 </template>
