@@ -4,7 +4,7 @@
 import { ref, onMounted } from 'vue'
 import { API_BASE_URL } from '~/base/link';
 
-    const { data: usinas } = await useFetch(`${API_BASE_URL}/usina/`);
+    const usinas = ref()
  
     const inversoresUsina = ref([]);
     const informaInversor = ref([]);
@@ -77,6 +77,8 @@ async function pegarInversores(acessoTokenAPI) {
 }  
 
 async function init() {
+    const { data: dadosUsinas } = await useFetch(`${API_BASE_URL}/usina/`);
+    usinas.value = dadosUsinas._rawValue
      pegarInversores(await initialize())
 }
 
