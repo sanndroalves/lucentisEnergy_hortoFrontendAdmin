@@ -11,7 +11,7 @@
     // Primeira requisição para obter o access_token
 
     let data1 = ''
-    let accessToken = ''
+    let accessToken = ''  
 
 async function initialize() {
         const response1 = await fetch('/api/token2', {

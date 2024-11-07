@@ -164,7 +164,7 @@
                 <AlertTriangleIcon size="30" />
               </v-avatar>
               <b style="font-size: 18px; margin: 10px;">Alerta Inversores</b> 
-              <v-chip color="error" style="font-size: 12px; padding: 4px; height: 20px; margin-top: 10px;">{{inversoresAlerta.length}}</v-chip>
+              <v-chip color="error" style="font-size: 15px; padding: 6px; height: 24px; margin-top: 10px;">{{inversoresAlerta.length}}</v-chip>
             </div>
             <div class="mt-1 text-subtitle-1 text-medium-emphasis">
               Fora do ar/Sem geração

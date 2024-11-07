@@ -18,6 +18,7 @@ import AnaliseGeracao from "~~/components/dashboard/AnaliseGeracao.vue";
 import GeracaoDinheiro from "@/components/dashboard/GeracaoDinheiro.vue"; 
 import Irregular from "@/components/dashboard/Irregular.vue"; 
 import Alerta from "@/components/dashboard/Alerta.vue"; 
+import VerificarStrings from "@/components/dashboard/VerificarStrings.vue"; 
 
 const { data: usinas } = await useFetch(`${API_BASE_URL}/usina/`); 
 const { data: unidades } = await useFetch( `${API_BASE_URL}/unidadecompensacao`); 
@@ -27,19 +28,22 @@ const { data: manutencoes } = await useFetch(`${API_BASE_URL}/manutencao/`);
 const valorIluminacao = unidades.value.filter(item => item.secretaria == 'I' || item.secretaria == 'P') 
 const valoresPredios = unidades.value.filter(item => item.secretaria == 'E' || item.secretaria == 'S' || item.secretaria == 'O')
 const valoresUnidadesCompensa = unidades.value.filter(item => item.status == 'L')
-  
+
+const overlay = ref(true);
+onMounted(() => { 
+
+  // Esconde o overlay após 5 segundos
+  setTimeout(() => {
+    overlay.value = false; 
+  }, 5000);
+});
+
+
 </script>
 <template>
-    <!-- <v-overlay
-      :model-value="overlay"
-      class="align-center justify-center"
-    >
-      <v-progress-circular
-        color="primary"
-        size="64"
-        indeterminate
-      ></v-progress-circular>
-    </v-overlay> -->
+    <v-overlay :model-value="overlay" class="align-center justify-center">
+      <v-progress-circular color="primary" size="64" indeterminate></v-progress-circular>
+    </v-overlay>
     <v-row>
     <div
       class="v-card v-theme--BLUE_THEME v-card--density-default elevation-10 rounded-md v-card--variant-elevated bg-lightprimary elevation-0 rounded-md mb-8"
@@ -206,9 +210,17 @@ const valoresUnidadesCompensa = unidades.value.filter(item => item.status == 'L'
             <AnaliseGeracao />
           </div>
           
-          <Alerta />
-          <br>
-          <Irregular />
+          
+          <div class="mb-6">
+            <Alerta />
+          </div> 
+          <div class="mb-15">
+            <VerificarStrings /> 
+          </div>  
+          <div>
+            <Irregular /> 
+          </div>  
+          
            
         </v-col>
       </v-row>

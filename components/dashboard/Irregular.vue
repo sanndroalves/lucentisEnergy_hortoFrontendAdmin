@@ -216,7 +216,7 @@
                 <BoltIcon size="30" />
               </v-avatar>
               <b style="font-size: 18px; margin: 10px;">Déficit Gerações</b>
-              <v-chip color="warning" style="font-size: 12px; padding: 4px; height: 20px; margin-top: 10px;">{{usinasProcuradas.length}}</v-chip>
+              <v-chip color="warning" style="font-size: 15px; padding: 6px; height: 24px; margin-top: 10px;">{{usinasProcuradas.length}}</v-chip>
             </div>
             <div class="mt-1 text-subtitle-1 text-medium-emphasis">
               Gerações irregulares (+3 meses)
