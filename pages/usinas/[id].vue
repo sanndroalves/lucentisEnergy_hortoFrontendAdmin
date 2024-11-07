@@ -849,6 +849,7 @@ definePageMeta({
         dialogProgramarManutencao.value = true
         dataManutencao.value = null
         empresaResponsavel.value = null
+        descricaoManutencao.value = null
         showErrorCampoManu.value = false
         showSuccessAlertManu.value = false
     }
@@ -865,6 +866,7 @@ definePageMeta({
     /* CRIAR NOVA MANUTENÇÃO*/
     const dataManutencao = ref("")
     const empresaResponsavel = ref("")
+    const descricaoManutencao = ref("")
     const statusManu = ref("1")
 
     const itemManu = [
@@ -893,6 +895,7 @@ definePageMeta({
                     idGeradora: geradora,
                     data: dataManutencao.value,
                     empresa: empresaResponsavel.value,
+                    descricao: descricaoManutencao.value,
                     dataCriacao: formattedDate,
                     status: statusManu.value 
                 }),
@@ -975,10 +978,12 @@ definePageMeta({
     const dialogManuEditPDF = ref(false)
     const dataPDFEdit = ref()
     const empresaPDFEdit = ref()
+    const descricaoManutencaoEdit = ref()
     const verOrdem = (idManutencao) =>{
         const manuSelecionada = manutencoes.value.filter((item) => item.id === idManutencao)
         dataPDFEdit.value = manuSelecionada[0].data
         empresaPDFEdit.value = manuSelecionada[0].empresa
+        descricaoManutencaoEdit.value = manuSelecionada[0].descricao
 
         dialogManuEditPDF.value = true
 
@@ -1471,6 +1476,9 @@ definePageMeta({
                 <v-col cols="12">
                     <v-text-field v-model="empresaResponsavel" label="Nome da Empresa Responsável" required></v-text-field>
                 </v-col>
+                <v-col cols="12">
+                    <v-text-field v-model="descricaoManutencao" label="Descrição" required></v-text-field>
+                </v-col>
                 <v-col cols="12" class="text-center">
                     <v-btn @click="sendManutencao" type="submit" color="primary">Programar</v-btn>
                 </v-col>
@@ -1548,7 +1556,7 @@ definePageMeta({
                                 <th colspan="3" class="text-center" style="background-color: #e8e8e8;">Descrição</th>
                             </tr>
                             <tr>
-                                <td colspan="3">[campo descrição]</td>
+                                <td colspan="3">{{ descricaoManutencao }}</td>
                             </tr>
                         </thead>
                     </v-table>
@@ -1700,7 +1708,7 @@ definePageMeta({
                                 <th colspan="3" class="text-center" style="background-color: #e8e8e8;">Descrição</th>
                             </tr>
                             <tr>
-                                <td colspan="3">[campo descrição]</td>
+                                <td colspan="3">{{descricaoManutencaoEdit}}</td>
                             </tr>
                         </thead>
                     </v-table>
