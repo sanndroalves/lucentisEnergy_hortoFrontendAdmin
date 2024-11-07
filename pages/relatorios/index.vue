@@ -484,9 +484,9 @@ const getBG = (rela, index, predioId, predioCategoria) =>{
         const totalPorMes = projecao.value
             .filter(item => item.ano === parseInt(anoId))
             .reduce((acumulador, item) => {
-            const mesAtual = item.mes;
-                acumulador[mesAtual] = (acumulador[mesAtual] || 0) + Number(item.projecao);
-            return acumulador;
+              const mesAtual = item.mes;
+                acumulador[mesAtual] = parseFloat(((acumulador[mesAtual] || 0) + Number(item.projecao)).toFixed(2));
+              return acumulador;
             }, {});
             return totalPorMes;
     };
@@ -495,9 +495,9 @@ const getBG = (rela, index, predioId, predioCategoria) =>{
     const somarIndividualReal = async (anoId) => {
       const totalPorMes = real.value
           .filter(item => item.ano === parseInt(anoId))
-          .reduce((acumulador, item) => {
+          .reduce((acumulador, item) => { 
           const mesAtual = item.mes;
-              acumulador[mesAtual] = (acumulador[mesAtual] || 0) + Number(item.geracao);
+            acumulador[mesAtual] = parseFloat(((acumulador[mesAtual] || 0) + Number(item.geracao)).toFixed(2));
           return acumulador;
           }, {});
 
@@ -511,8 +511,8 @@ const getBG = (rela, index, predioId, predioCategoria) =>{
           .filter(item => item.ano === parseInt(anoId))
           .reduce((acumulador, item) => {
           const mesAtual = item.mes;
-              acumulador[mesAtual] = (acumulador[mesAtual] || 0) + Number(item.injetadoPonta) + Number(item.injetadoFPonta);
-          return acumulador;
+                acumulador[mesAtual] = parseFloat(((acumulador[mesAtual] || 0) + Number(item.injetadoPonta) + Number(item.injetadoFPonta)).toFixed(2));
+          return acumulador; 
           }, {});
 
           return totalPorMes;
@@ -525,7 +525,7 @@ const getBG = (rela, index, predioId, predioCategoria) =>{
           .filter(item => item.ano === parseInt(anoId))
           .reduce((acumulador, item) => {
           const mesAtual = item.mes;
-              acumulador[mesAtual] = (acumulador[mesAtual] || 0) + Number(item.enerInjTUSD) + Number(item.enerInjTE);
+                acumulador[mesAtual] = parseFloat(((acumulador[mesAtual] || 0) + Number(item.enerInjTUSD)).toFixed(2));
           return (mesAtual, acumulador);
           }, {});
 
@@ -537,8 +537,8 @@ const getBG = (rela, index, predioId, predioCategoria) =>{
           .filter(item => item.ano === parseInt(anoId))
           .reduce((acumulador, item) => {
           const mesAtual = item.mes;
-              acumulador[mesAtual] = (acumulador[mesAtual] || 0) + Number(item.saldoEnergia);
-          return (mesAtual, acumulador);
+                acumulador[mesAtual] = parseFloat(((acumulador[mesAtual] || 0) + Number(item.saldoEnergia)).toFixed(2));
+                return (mesAtual, acumulador);
           }, {});
 
           return totalPorMes;
@@ -562,15 +562,13 @@ const getBG = (rela, index, predioId, predioCategoria) =>{
       const valoresReal = Object.values(somaReal.value);
       const valoresInjetados = Object.values(somaInjetado.value);
       const valoresCompensado = Object.values(somaCompensado.value);
-
-      console.log("PROJETADO", valoresProjetado)
-
-      totalProjetado.value = valoresProjetado.reduce((total, valor) => total + valor, 0);
-      totalReal.value = valoresReal.reduce((total, valor) => total + valor, 0);
-      totalInjetado.value = valoresInjetados.reduce((total, valor) => total + valor, 0);
-      totalCompensado.value = valoresCompensado.reduce((total, valor) => total + valor, 0);
  
-
+      console.log("PROJETADO", valoresProjetado)
+      totalProjetado.value = parseFloat(valoresProjetado.reduce((total, valor) => total + valor, 0).toFixed(2));
+      totalReal.value = parseFloat(valoresReal.reduce((total, valor) => total + valor, 0).toFixed(2));
+      totalInjetado.value = parseFloat(valoresInjetados.reduce((total, valor) => total + valor, 0).toFixed(2));
+      totalCompensado.value = parseFloat(valoresCompensado.reduce((total, valor) => total + valor, 0).toFixed(2));
+ 
   }
 
   const calcularMedia = (relatorios) =>{
