@@ -216,91 +216,56 @@ const getAvatarClass = (rela, index, predioId) => {
 
   /* FUNÇÕES PARA ADICONAR QUANTIDADE AOS MESES QUE POSSUEM CONSUMO IRREGULAR*/
   const mesesConsumoIrregular = ref({
-    'E': [  // Educação
-      { mes: 1, qtdAcima: 0, unidades: [] },
-      { mes: 2, qtdAcima: 0, unidades: [] },
-      { mes: 3, qtdAcima: 0, unidades: [] },
-      { mes: 4, qtdAcima: 0, unidades: [] },
-      { mes: 5, qtdAcima: 0, unidades: [] },
-      { mes: 6, qtdAcima: 0, unidades: [] },
-      { mes: 7, qtdAcima: 0, unidades: [] },
-      { mes: 8, qtdAcima: 0, unidades: [] },
-      { mes: 9, qtdAcima: 0, unidades: [] },
-      { mes: 10, qtdAcima: 0, unidades: [] },
-      { mes: 11, qtdAcima: 0, unidades: [] },
-      { mes: 12, qtdAcima: 0, unidades: [] }
-    ],
-    'S': [  // Saúde
-      { mes: 1, qtdAcima: 0, unidades: [] },
-      { mes: 2, qtdAcima: 0, unidades: [] },
-      { mes: 3, qtdAcima: 0, unidades: [] },
-      { mes: 4, qtdAcima: 0, unidades: [] },
-      { mes: 5, qtdAcima: 0, unidades: [] },
-      { mes: 6, qtdAcima: 0, unidades: [] },
-      { mes: 7, qtdAcima: 0, unidades: [] },
-      { mes: 8, qtdAcima: 0, unidades: [] },
-      { mes: 9, qtdAcima: 0, unidades: [] },
-      { mes: 10, qtdAcima: 0, unidades: [] },
-      { mes: 11, qtdAcima: 0, unidades: [] },
-      { mes: 12, qtdAcima: 0, unidades: [] }
-    ],
-    'O': [  // Outros
-      { mes: 1, qtdAcima: 0, unidades: [] },
-      { mes: 2, qtdAcima: 0, unidades: [] },
-      { mes: 3, qtdAcima: 0, unidades: [] },
-      { mes: 4, qtdAcima: 0, unidades: [] },
-      { mes: 5, qtdAcima: 0, unidades: [] },
-      { mes: 6, qtdAcima: 0, unidades: [] },
-      { mes: 7, qtdAcima: 0, unidades: [] },
-      { mes: 8, qtdAcima: 0, unidades: [] },
-      { mes: 9, qtdAcima: 0, unidades: [] },
-      { mes: 10, qtdAcima: 0, unidades: [] },
-      { mes: 11, qtdAcima: 0, unidades: [] },
-      { mes: 12, qtdAcima: 0, unidades: [] }
-    ],
-    'P': [  // Praça
-      { mes: 1, qtdAcima: 0, unidades: [] },
-      { mes: 2, qtdAcima: 0, unidades: [] },
-      { mes: 3, qtdAcima: 0, unidades: [] },
-      { mes: 4, qtdAcima: 0, unidades: [] },
-      { mes: 5, qtdAcima: 0, unidades: [] },
-      { mes: 6, qtdAcima: 0, unidades: [] },
-      { mes: 7, qtdAcima: 0, unidades: [] },
-      { mes: 8, qtdAcima: 0, unidades: [] },
-      { mes: 9, qtdAcima: 0, unidades: [] },
-      { mes: 10, qtdAcima: 0, unidades: [] },
-      { mes: 11, qtdAcima: 0, unidades: [] },
-      { mes: 12, qtdAcima: 0, unidades: [] }
-    ],
-    'I': [  // IP (Iluminação Pública)
-      { mes: 1, qtdAcima: 0, unidades: [] },
-      { mes: 2, qtdAcima: 0, unidades: [] },
-      { mes: 3, qtdAcima: 0, unidades: [] },
-      { mes: 4, qtdAcima: 0, unidades: [] },
-      { mes: 5, qtdAcima: 0, unidades: [] },
-      { mes: 6, qtdAcima: 0, unidades: [] },
-      { mes: 7, qtdAcima: 0, unidades: [] },
-      { mes: 8, qtdAcima: 0, unidades: [] },
-      { mes: 9, qtdAcima: 0, unidades: [] },
-      { mes: 10, qtdAcima: 0, unidades: [] },
-      { mes: 11, qtdAcima: 0, unidades: [] },
-      { mes: 12, qtdAcima: 0, unidades: [] }
-    ]
+    'E': {  // Educação
+      2023: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] })),
+      2024: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] })),
+      2025: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] }))
+    },
+    'S': {  // Saúde
+      2023: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] })),
+      2024: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] })),
+      2025: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] }))
+    },
+    'O': {  // Outros
+      2023: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] })),
+      2024: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] })),
+      2025: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] }))
+    },
+    'P': {  // Praça
+      2023: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] })),
+      2024: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] })),
+      2025: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] }))
+    },
+    'I': {  // IP (Iluminação Pública)
+      2023: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] })),
+      2024: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] })),
+      2025: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] }))
+    }
   });
+
   
 
-  const adicionarQtdAcima = (mesAtual, predioId, predioCategoria) => {
-    const mesesCategoria = mesesConsumoIrregular.value[predioCategoria];
-    const mesIndex = mesesCategoria.findIndex(item => item.mes === mesAtual);
+  const adicionarQtdAcima = (mesAtual, anoAtual, predioId, predioCategoria) => {
+    const categoria = mesesConsumoIrregular.value[predioCategoria];
     
-    if (mesIndex !== -1) {
-      const mes = mesesCategoria[mesIndex];
+    if (!categoria[anoAtual]) {
+      categoria[anoAtual] = Array.from({ length: 12 }, (_, i) => ({
+        mes: i + 1, qtdAcima: 0, unidades: []
+      }));
+    }
+    // Verifica se o mês atual é válido (1 a 12)
+    if (mesAtual >= 1 && mesAtual <= 12) {
+      const mes = categoria[anoAtual][mesAtual - 1];
+      
+      // Verifica se o prédio já foi adicionado para evitar duplicações
       if (!mes.unidades.includes(predioId)) {
         mes.unidades.push(predioId);
         mes.qtdAcima += 1;
-      } 
-    }
+      }
+    }  
   };
+
+
 
 
 
@@ -356,7 +321,7 @@ const getBG = (rela, index, predioId, predioCategoria) =>{
         // vermelho claro
         return '#FFC79A'
       }else if(parseInt(final) > 800){
-        adicionarQtdAcima(rela.mes, predioId, predioCategoria);  
+        adicionarQtdAcima(rela.mes, selectedYearConsumo.value, predioId, predioCategoria);  
         return '#FFA086'
       }
     } else{
@@ -1157,7 +1122,7 @@ const injecoesUsinas = ref()
                           <thead>
                             <tr>
                               <th colspan="3"></th>
-                              <td v-for="mes in mesesConsumoIrregular[preSelecionado]" :key="mes" style="padding: 0px; border: 0px">
+                              <td v-for="mes in mesesConsumoIrregular[preSelecionado][selectedYearConsumo]" :key="mes" style="padding: 0px; border: 0px">
                                 <div class="v-col-sm-12 v-col-md-12 v-col-lg-12  v-col-12">
                                   <div
                                     class="text-decoration-none d-flex align-center justify-center text-center rounded-md pa-6 bg-lightwarning"
