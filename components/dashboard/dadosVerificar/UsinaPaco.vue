@@ -71,7 +71,11 @@ async function pegarInversores(acessoTokenAPI) {
     } 
 }  
   
-pegarInversores(await initialize())
+async function init() {
+     pegarInversores(await initialize())
+}
+
+init();
 
 // PROCURAR NA API
 async function verificarStringsAPI(inversorSN, acessoTokenAPI) {
