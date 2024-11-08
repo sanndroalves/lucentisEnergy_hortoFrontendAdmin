@@ -625,7 +625,7 @@ const injecoesUsinas = ref()
     pesquisarRelatorio()// pesquisar relatorio da unidade
     totalProjetoInjetado.value = 0 //zerar para gerar um novo de acordo com a usina
 
-    gerarRelarios();
+    // gerarRelarios();
 
   }
 
@@ -748,6 +748,8 @@ const injecoesUsinas = ref()
     tabelaElement.value = document.getElementById('tabelaMensalGeral');
   } else if (Tipo == 'Geral') {
     tabelaElement.value = document.getElementById('tabelaGeral');
+  }else if (Tipo == 'CompensaIndi'){
+    tabelaElement.value = document.getElementById('tabelaCompensa');
   }
 
   // Verifica se os elementos existem
@@ -775,7 +777,7 @@ const injecoesUsinas = ref()
     },
     jsPDF: {
       unit: 'in',
-      format: 'a4', // Tamanho do papel
+      format: 'a3', // Tamanho do papel
       orientation: 'landscape', // Orientação do papel
     }
   });
@@ -1579,7 +1581,7 @@ const injecoesUsinas = ref()
 
                 <!-- RELATORIOS COMPENSAÇÃO NOVO UNIDADE (FINALIZADO)-->
                 <v-card elevation="0" v-if="pesquisaCarregada && cateSelecionada === 'COMPENSANOVO'">
-                    <div class="text-center mb-5">
+                    <div class="text-center mb-5" id="titulo">
                         <h2>Relatório Gerado</h2>
                         <h5>{{ anoSelecionado }}</h5>
                     </div>
@@ -1621,8 +1623,8 @@ const injecoesUsinas = ref()
                     </v-row> -->
 
                     <!-- TABELA COM ESTATISTICAS -->
-                    <v-card-text id="tabelaCompensa">
-                      <v-table class="bordered">
+                    <v-card-text>
+                      <v-table id="tabelaCompensa" class="bordered">
                         <template v-slot:default>
                           <thead>
                             <tr>
@@ -1755,15 +1757,15 @@ const injecoesUsinas = ref()
 
                                   <div style="display: flex;">
                                       <div style="width: 600px; border: 3px solid #ddd; padding: 8px;"> 
-                                            <v-chip variant="flat" :color="(parseInt(rela.enerInjTE) +  parseInt(rela.enerInjTUSD)) < totalProjetoInjetado  ? 'error' : 'success'">
-                                                {{ (parseInt(rela.enerInjTE) +  parseInt(rela.enerInjTUSD)) < totalProjetoInjetado  ? 'Abaixo' : 'Acima'}}
+                                            <v-chip variant="flat" :color="(parseInt(rela.enerInjTE)) < totalProjetoInjetado  ? 'error' : 'success'">
+                                                {{ (parseInt(rela.enerInjTE)) < totalProjetoInjetado  ? 'Abaixo' : 'Acima'}}
                                             </v-chip> 
                                       </div> 
                                   </div>
 
                                   <div style="display: flex;">
                                       <div style="width: 600px; border: 3px solid #ddd; padding: 8px;"> 
-                                        <strong>{{ Math.abs((parseInt(rela.enerInjTE) +  parseInt(rela.enerInjTUSD)) - totalProjetoInjetado).toFixed(2) }} kWh</strong>
+                                        <strong>{{ Math.abs((parseInt(rela.enerInjTE)) - totalProjetoInjetado).toFixed(2) }} kWh</strong>
                                       </div> 
                                   </div>
                                 </div>
@@ -1772,7 +1774,7 @@ const injecoesUsinas = ref()
                         </template>
                       </v-table>
                       <v-row justify="space-around" style="margin:15px;">
-                        <v-btn @click="baixarPDF()" color="error">
+                        <v-btn @click="baixarPDF('CompensaIndi')" color="error">
                           <v-avatar size="30" class="text-white">
                               <FileTextIcon  />
                           </v-avatar>

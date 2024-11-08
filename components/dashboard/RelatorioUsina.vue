@@ -25,15 +25,18 @@ const geracaoUsina = ref([]);
     const geracoes = ref([]);
     const projecoes = ref([]);
     const consumo = ref([]);
+    const dadosUsina = ref([]);
 
 watch([() => props.idUsina, () => props.ano], async ([idUsina, ano]) => {
   const { data: relatorioPesquisaData } = await useFetch(`${API_BASE_URL}/relatoriousina?idGeradora=${idUsina}&ano=${ano}`);
   const { data: projecaoUsinaData } = await useFetch(`${API_BASE_URL}/projecaogeracao?idGeradora=${idUsina}&ano=${ano}`);
   const { data: geracaoUsinaData } = await useFetch(`${API_BASE_URL}/relatoriogeracao?idGeradora=${idUsina}&ano=${ano}`);
+  const { data: usina } = await useFetch(`${API_BASE_URL}/usina/${idUsina}`);
  
   relatorioPesquisa.value = relatorioPesquisaData._rawValue;
   projecaoUsina.value = projecaoUsinaData._rawValue;
   geracaoUsina.value = geracaoUsinaData._rawValue;
+  dadosUsina.value = usina._rawValue
 
     injecoes.value = [] 
     geracoes.value = []
@@ -53,12 +56,7 @@ watch([() => props.idUsina, () => props.ano], async ([idUsina, ano]) => {
         geracoes.value.push(item.geracao);
     }
 });
-
-    // const { data: relatorioPesquisa } = await useFetch(`${API_BASE_URL}/relatoriousina?idGeradora=${props.idUsina}&ano=${props.ano}`);
-    // const { data: projecaoUsina } = await useFetch(`${API_BASE_URL}/projecaogeracao?idGeradora=${props.idUsina}&ano=${props.ano}`); //PROJECAO
-    // const { data: geracaoUsina } = await useFetch(`${API_BASE_URL}/relatoriogeracao?idGeradora=${props.idUsina}&ano=${props.ano}`); //GERACAO
-    
-
+ 
 // CONFIGURANDO GRÁFICO
 const chartOptions = computed(() => {
     return {
@@ -94,7 +92,22 @@ const chartOptions = computed(() => {
             },
             dataLabels: { enabled: false },
             markers: { size: 0 },
-            legend: { show: false },
+            title: { // Título do gráfico
+                text: `Relatório Anual de Usina ${dadosUsina.value.nome}`,
+                align: 'center',
+                style: {
+                    fontSize: '18px',
+                    color: primary
+                }
+            },
+            legend: {
+                show: true,   // Legenda visível
+                position: 'bottom', // Posiciona a legenda abaixo do gráfico
+                labels: {
+                    colors: "#adb0bb",
+                    useSeriesColors: true
+                }
+            },
             xaxis: {
                 type: "category",
                 categories: ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"],
