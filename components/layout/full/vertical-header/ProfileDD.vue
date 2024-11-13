@@ -17,6 +17,7 @@ const dados = ref([JSON.stringify(data.value)])
  
 const username = ref(JSON.stringify(data.value.username)) 
 
+
 </script>
 
 <template>
