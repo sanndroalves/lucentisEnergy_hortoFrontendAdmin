@@ -32,7 +32,7 @@ export default defineNuxtConfig({
         signIn: { path: '/token/login', method: 'post' },//endereço do djoser
         signOut: { path: '/token/logout', method: 'post' },//endereço do djoser
         //signUp: false,//criar usuário novo (desativado temporáriamente)
-        getSession: { path: '/users', method: 'get' },//endereço p/ confirmar token
+        getSession: { path: '/users/me', method: 'get' },//endereço p/ confirmar token
       },
       token: { signInResponseTokenPointer: '/auth_token', type: 'Token' },
       pages: { login: '../../auth/login' }

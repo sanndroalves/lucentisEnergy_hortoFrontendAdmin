@@ -11,11 +11,11 @@ const submitLogout = ()=> {
     })
 }
 
-const { data } = useAuth()
+const { data } = useAuth() 
 
 const dados = ref([JSON.stringify(data.value)])
-
-const username = ref(JSON.stringify(data.value.results[0].username))
+ 
+const username = ref(JSON.stringify(data.value.username)) 
 
 </script>
 

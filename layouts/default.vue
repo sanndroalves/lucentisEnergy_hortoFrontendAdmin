@@ -11,8 +11,8 @@ useHead({
   },
 });
 
-const { data } = useAuth()
-const idUsuario = ref(JSON.stringify(data.value.results[0].id))
+const { data } = useAuth() 
+const idUsuario = ref(data.value.id)
 
 const { data: usuarioInfo } = await useFetch(`https://peehorto.cloud/usuarios/${idUsuario.value}`); 
 console.log("CARGO: ", usuarioInfo.value.cargo)
