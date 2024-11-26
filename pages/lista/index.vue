@@ -66,7 +66,9 @@ onMounted(() => {
 });    
 
 consumoMedio.value = 1150797,78
-
+const calculoPosAutoConsumo = ref((totalProjetado - consumoMedio).toFixed(2))
+const creditoParaInjecao = ref(((totalProjetado - consumoMedio)/12).toFixed(2))
+  
 </script>
 <template>
     <!-- BANNER -->
@@ -130,8 +132,8 @@ consumoMedio.value = 1150797,78
                             <tr>
                               <td class="text-center" style="border: 1px solid #4d7fff">{{ consumoMedio  }}</td>
                               <td class="text-center" style="border: 1px solid #4d7fff">{{ totalProjetado }}</td>
-                              <td class="text-center" style="border: 1px solid #4d7fff">{{ (totalProjetado - consumoMedio).toFixed(2) }}</td>
-                              <td class="text-center" style="border: 1px solid #4d7fff">{{ ((totalProjetado - consumoMedio)/12).toFixed(2) }}</td>
+                              <td class="text-center" style="border: 1px solid #4d7fff">{{ calculoPosAutoConsumo }}</td>
+                              <td class="text-center" style="border: 1px solid #4d7fff">{{ creditoParaInjecao }}</td>
                             </tr>
                           </thead>
                       </v-table>
