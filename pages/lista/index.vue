@@ -1,75 +1,185 @@
-<script setup >
-import { useHead  } from '@vueuse/head';
-import { nextTick } from 'vue';
-import UiParentCard from '@/components/shared/UiParentCard.vue';
+<script setup>
+  import { useHead } from '@vueuse/head';
+  import { nextTick, ref, onMounted } from 'vue';
+  import UiParentCard from '@/components/shared/UiParentCard.vue';
+  import { API_BASE_URL } from '~/base/link';
 
-import { API_BASE_URL } from '~/base/link';
-
-// Defina o título da página
-useHead ({
-  title: 'Relatórios'
-});
-
-definePageMeta({
-    middleware: 'auth'
-})
-
-
-const consumoMedio = ref(null);
-const usinas = ref([]);
-const unidades = ref([]);
-
-// Fetch dos dados das usinas e unidades
-const { data: fetchedUsinas } = await useFetch(`${API_BASE_URL}/usina/`);
-const { data: fetchedUnidades } = await useFetch(`${API_BASE_URL}/unidadecompensacao/`);
-
-// Armazene os dados retornados nas variáveis reativas
-usinas.value = fetchedUsinas.value;
-unidades.value = fetchedUnidades.value;
-
-// Função para buscar o valor de MediaConsumo
-const buscarConsumoMedio = () => {
-  usinas.value.forEach(usina => {
-    const unidadeCorrespondente = unidades.value.filter(unidade => unidade.uc === usina.uc)[0]; 
-    if (unidadeCorrespondente) {  
-      consumoMedio.value += unidadeCorrespondente.mediaConsumo;
-    }
+  // Definindo o título da página
+  useHead({
+    title: 'Lista de Rateio'
   });
-};
 
-const totalProjetado = ref()
-const somaProjecao = ref("")
+  // Definindo o middleware para a página
+  definePageMeta({
+    middleware: 'auth'
+  });
 
-const { data: projecao } = await useFetch(`${API_BASE_URL}/projecaogeracao`);
-    const somarIndividualProjecao = async (anoId) => {                                                                                                                                                                                                                                                              
-        const totalPorMes = projecao.value
-            .filter(item => item.ano === parseInt(anoId))
-            .reduce((acumulador, item) => {
-              const mesAtual = item.mes;
-                acumulador[mesAtual] = parseFloat(((acumulador[mesAtual] || 0) + Number(item.projecao)).toFixed(2));
-              return acumulador;
-            }, {});
-            return totalPorMes;
-    };
+  // Definindo variáveis reativas
+  const consumoMedio = ref(null);
+  const usinas = ref([]);
+  const unidades = ref([]);
+  const unidadesCompensadas = ref([]);
+  const projecaoFiltrada = ref([]);
+  const totalProjetado = ref(0);
+  const somaProjecao = ref("");
+  const calculoPosAutoConsumo = ref(0);
+  const creditoParaInjecao = ref(0); 
 
-    somaProjecao.value = await somarIndividualProjecao(2024);
+  const anoAtual = new Date().getFullYear();
+
+  // Função para buscar dados das usinas e unidades
+  const fetchData = async () => {
+    const { data: fetchedUsinas } = await useFetch(`${API_BASE_URL}/usina/`);
+    const { data: fetchedUnidades } = await useFetch(`${API_BASE_URL}/unidadecompensacao`);
+    const { data: fetchedProjecao } = await useFetch(`${API_BASE_URL}/projecaogeracao`);
+    
+    usinas.value = fetchedUsinas.value.filter(usina => usina.id !== 19 && usina.id !== 20);
+    unidades.value = fetchedUnidades.value 
+    unidadesCompensadas.value = fetchedUnidades.value.filter(item => item.status == 'L')
+    projecaoFiltrada.value = fetchedProjecao.value.filter(item => item.ano === anoAtual && item.idGeradora !== 19 && item.idGeradora !== 20);
+     
+  };
+
+  // Função para calcular o consumo médio
+  const buscarConsumoMedio = () => {
+    usinas.value.forEach(usina => {
+      const unidadeCorrespondente = unidades.value.filter(unidade => unidade.uc === usina.uc)[0];
+      if (unidadeCorrespondente) {
+        consumoMedio.value += unidadeCorrespondente.mediaConsumo;
+      }
+    });
+
+    consumoMedio.value = (consumoMedio.value * 12)
+  };
+
+  // Função para somar projeções individuais por ano
+  const somarIndividualProjecao = async (anoId, idGeradoraRemovida) => {
+
+    // Se um idGeradora for removido, filtramos novamente
+    if (idGeradoraRemovida != null) {
+      projecaoFiltrada.value = projecaoFiltrada.value.filter(item => item.idGeradora !== idGeradoraRemovida);
+    }
+
+    const totalPorMes = projecaoFiltrada.value.reduce((acumulador, item) => {
+      const mesAtual = item.mes;
+      acumulador[mesAtual] = parseFloat(((acumulador[mesAtual] || 0) + Number(item.projecao)).toFixed(2));
+      return acumulador;
+    }, {});
+
+    return totalPorMes;
+  };
+ 
+
+  // Função para calcular o total projetado
+  const calcularTotalProjetado = async (idGeradoraRemovida) => {
+    somaProjecao.value = await somarIndividualProjecao(2024, idGeradoraRemovida);
     const valoresProjetado = Object.values(somaProjecao.value);
     totalProjetado.value = parseFloat(valoresProjetado.reduce((total, valor) => total + valor, 0).toFixed(2));
-     
+  }; 
 
+  // Função para calcular os valores finais
+  const calcularValoresFinais = () => {
+    calculoPosAutoConsumo.value = (totalProjetado.value - consumoMedio.value).toFixed(2);
+    creditoParaInjecao.value = ((totalProjetado.value - consumoMedio.value) / 12).toFixed(2);
+  };
 
+  //Função para remover usina da lista de rateio
+  const removerUsina = async (id)  =>{
+    consumoMedio.value = 0
+    totalProjetado.value = 0
+    calculoPosAutoConsumo.value = 0
+    creditoParaInjecao.value = 0
 
-
-onMounted(() => {
-  buscarConsumoMedio();
+    usinas.value = usinas.value.filter(usina => usina.id !== id);
+    buscarConsumoMedio();
+    await calcularTotalProjetado(id);
+    calcularValoresFinais();
+  }
  
-});    
+  // Chamadas no ciclo de vida
+  onMounted(async () => {
+    await fetchData();  // Buscar dados das usinas e unidades
+    buscarConsumoMedio();  // Calcular consumo médio
+    await calcularTotalProjetado(null);  // Calcular total projetado
+    calcularValoresFinais();  // Calcular valores finais
+    calcularMediaConsumo();
+  });
 
-consumoMedio.value = 1150797,78
-const calculoPosAutoConsumo = ref((totalProjetado - consumoMedio).toFixed(2))
-const creditoParaInjecao = ref(((totalProjetado - consumoMedio)/12).toFixed(2))
+  const unidadesComMediaConsumo = ref([]);
+  const calcularMediaConsumo = async () => { 
+    const { data: relatorios } = await useFetch(`${API_BASE_URL}/relatoriocompensacao`);
+    
+ 
+    for (const unidade of unidadesCompensadas.value) {  
+      const relatoriosDaUnidade = relatorios.value.filter(item => item.idUnidadeCompensa === unidade.id);
+ 
+      if (relatoriosDaUnidade.length > 0) {
+        const relatoriosOrdenados = relatoriosDaUnidade.sort((a, b) => new Date(b.data) - new Date(a.data)); // Ordem decrescente de data
+
+        const ultimos6Relatorios = relatoriosOrdenados.slice(0, 6);
+
+        const somaConsumo = ultimos6Relatorios.reduce((soma, item) => soma + parseFloat(item.consumokWh || 0), 0);
+        const mediaConsumo = somaConsumo / ultimos6Relatorios.length; 
+        unidade.mediaConsumo = mediaConsumo.toFixed(2);
+      } else {
+        unidade.mediaConsumo = 0;
+      }
+ 
+      unidadesComMediaConsumo.value.push({
+        uc: unidade.uc,
+        nome: unidade.nome,
+        mediaConsumo: unidade.mediaConsumo,
+      });
+    } 
+
+    unidadesComMediaConsumo.value.sort((a, b) => b.mediaConsumo - a.mediaConsumo);
+  };
+
+  console.log("Unidades ordenadas por média de consumo:", unidadesComMediaConsumo.value);
+
+
   
+
+
+
+
+
+
+
+
+
+
+  import * as XLSX from "xlsx";
+
+// Simulação de dados gerados 
+
+// Função para exportar
+const exportarExcel = () => {
+  exportarParaExcel(unidadesComMediaConsumo.value);
+};
+
+// Função de exportação
+const exportarParaExcel = (dados) => {
+  if (!dados || dados.length === 0) {
+    console.error("Nenhum dado disponível para exportar.");
+    return;
+  }
+
+  const dadosFormatados = dados.map(({ uc, nome, mediaConsumo }) => ({
+    UC: uc,
+    Nome: nome,
+    "Média Consumo (kWh)": mediaConsumo,
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(dadosFormatados);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Unidades");
+
+  XLSX.writeFile(workbook, "UnidadesComMediaConsumo.xlsx");
+};
+
 </script>
+
 <template>
     <!-- BANNER -->
     <v-row>
@@ -107,7 +217,7 @@ const creditoParaInjecao = ref(((totalProjetado - consumoMedio)/12).toFixed(2))
           </div>
           <div class="d-none py-0 d-lg-block overflow-hidden">
             <div class="mb-n16 mt-3">
-              <img src="https://i.imgur.com/9rJgHQv.png" height="200" alt="breadcrumbw" />
+              <img src="https://i.imgur.com/QYFVuX6.png" height="200" alt="breadcrumbw" />
             </div>
           </div>
         </div>
@@ -118,16 +228,50 @@ const creditoParaInjecao = ref(((totalProjetado - consumoMedio)/12).toFixed(2))
     <!-- TABELAS -->
     <v-row>
         <v-col cols="12" md="12">
-            <UiParentCard title=""> 
+            <UiParentCard title="Configurações e Dados de Rateio"> 
                 <div class="pa-7 pt-1"> 
+
+                  <!-- LISTA DE USINAS PARA RATEIO -->
+                  <v-row class="mb-10">
+                    <v-expansion-panels> 
+                      <v-expansion-panel>
+                        <v-expansion-panel-title class="text-center">
+                          <div class="d-flex flex-column align-items-start">
+                            <div class="d-flex align-items-center">
+                              <v-avatar class="bg-lightsuccess text-success" size="40">
+                                <BoltIcon size="30" />
+                              </v-avatar>
+                              <b style="font-size: 18px; margin: 10px;">Usinas para Rateio</b>  
+                            </div> 
+                          </div>
+                        </v-expansion-panel-title>
+                        
+
+                        <v-expansion-panel-text>
+                          <v-chip v-for="usina in usinas" :key="usina.uc" class="ma-1"> 
+                              {{ usina.uc + '-' + usina.nome }}
+                              <v-btn @click="removerUsina(usina.id)" size="20" icon class="bg-error ml-2">
+                                <v-avatar size="20" class="text-white">
+                                  <XIcon size="15" />
+                                </v-avatar>
+                                <v-tooltip activator="parent" location="bottom">Remover Geradora</v-tooltip>
+                              </v-btn> 
+                          </v-chip>
+                        </v-expansion-panel-text>
+                      </v-expansion-panel>
+                    </v-expansion-panels>
+
+                  </v-row>
+                  
+                  <!-- VALORES PARA RATEIO TABELA -->
                   <v-row justify="space-around" >
                       <v-table>
                         <thead>
                             <tr> 
                               <th class="header-cell text-center" style="font-size: 17px; padding: 20px;">Consumo Usinas <br><span style="font-size: 12px;">kWh/Ano</span></th>
-                              <th class="header-cell text-center" style="font-size: 17px; padding: 20px;">Geração Usinas <br><span style="font-size: 12px;">Anual</span></th> 
-                              <th class="header-cell text-center" style="font-size: 17px; padding: 20px;">Pós AutoConsumo <br><span style="font-size: 12px;">Anual</span></th> 
-                              <th class="header-cell text-center" style="font-size: 17px; padding: 20px;">Créditos Para Injeção<br><span style="font-size: 12px;">Mensal</span></th> 
+                              <th class="header-cell text-center" style="font-size: 17px; padding: 20px;">Geração Usinas <br><span style="font-size: 12px;">kWh/Ano</span></th> 
+                              <th class="header-cell text-center" style="font-size: 17px; padding: 20px;">Pós AutoConsumo <br><span style="font-size: 12px;">kWh/Ano</span></th> 
+                              <th class="header-cell text-center" style="font-size: 17px; padding: 20px;">Créditos Para Injeção<br><span style="font-size: 12px;">kWh/Mensal</span></th> 
                             </tr>
                             <tr>
                               <td class="text-center" style="border: 1px solid #4d7fff">{{ consumoMedio  }}</td>
@@ -139,6 +283,10 @@ const creditoParaInjecao = ref(((totalProjetado - consumoMedio)/12).toFixed(2))
                       </v-table>
                     </v-row>  
                 </div> 
+
+                <v-btn @click="exportarExcel" class="bg-primary text-white">
+    Exportar para Excel
+  </v-btn>
             </UiParentCard>
         </v-col>
     </v-row>

@@ -86,7 +86,7 @@ const sidebarItem: menu[] = [
         to: '/lista/', 
         chip: '★',
         chipColor: 'primary',
-        disabled: true,
+        // disabled: true,
     },
     
     { header: 'GERENCIAMENTO' },
