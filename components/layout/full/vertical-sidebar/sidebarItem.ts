@@ -83,7 +83,7 @@ const sidebarItem: menu[] = [
     {
         title: 'Lista de Rateio',
         icon: FilesIcon,                               
-        to: '/lista1/', 
+        to: '/lista/', 
         chip: '★',
         chipColor: 'primary',
         // disabled: true,
