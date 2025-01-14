@@ -38,6 +38,32 @@ onMounted(() => {
   }, 5000);
 });
 
+   /* BAIXAR PDF */
+   import html2pdf from 'html2pdf.js';
+    const baixarPDF = () => {
+        // Referência para os elementos 
+        const tituloElement = document.getElementById('TelaPDF'); 
+        
+        const tempContainer = document.createElement('div');
+            
+        const clonedTitulo = tituloElement.cloneNode(true); 
+        
+        tempContainer.appendChild(clonedTitulo); 
+
+        // Gera o PDF usando o contêiner temporário
+        html2pdf(tituloElement, {
+            margin: 0, // Margem em polegadas
+            filename: 'InfoPeeHorto.pdf',
+            html2canvas: {
+            scale: 3, // Aumenta a qualidade
+            },
+            jsPDF: {
+            unit: 'in',
+            format: 'a3', // Tamanho do papel
+            //   orientation: 'landscape', // Orientação do papel
+            }
+        });
+    };
 
 </script>
 <template>
@@ -192,15 +218,15 @@ onMounted(() => {
           </div>
         </div>
 
-        <v-col class="text-center" cols="12">
+      <v-col class="text-center TelaPDF" id="TelaPDF" cols="12">
 
-          <v-btn class="bg-primary"  href="painel/">
+          <v-btn class="bg-primary"  href="painel/" target="_blank">
             Painel Central
-          </v-btn>
+          </v-btn> 
         </v-col> 
         
         <v-col cols="12" lg="8">
-           <GeracaoDinheiro/>  
+           <GeracaoDinheiro />  
             <br>
           <RelatorioGeracao />
         </v-col>

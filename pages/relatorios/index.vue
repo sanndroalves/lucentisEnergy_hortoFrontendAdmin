@@ -108,6 +108,12 @@ const monthNumberToName = (monthNumber) => {
 
   const getAno = (ano) =>{
     switch(ano){
+      case 2026:
+        return '25'
+        break
+      case 2025:
+        return '26'
+        break
       case 2024:
         return '24'
         break
@@ -219,27 +225,32 @@ const getAvatarClass = (rela, index, predioId) => {
     'E': {  // Educação
       2023: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] })),
       2024: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] })),
-      2025: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] }))
+      2025: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] })),
+      2026: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] }))
     },
     'S': {  // Saúde
       2023: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] })),
       2024: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] })),
-      2025: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] }))
+      2025: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] })),
+      2026: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] }))
     },
     'O': {  // Outros
       2023: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] })),
       2024: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] })),
-      2025: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] }))
+      2025: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] })),
+      2026: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] }))
     },
     'P': {  // Praça
       2023: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] })),
       2024: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] })),
-      2025: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] }))
+      2025: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] })),
+      2026: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] }))
     },
     'I': {  // IP (Iluminação Pública)
       2023: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] })),
       2024: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] })),
-      2025: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] }))
+      2025: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] })),
+      2026: Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtdAcima: 0, unidades: [] }))
     }
   });
 
@@ -601,18 +612,60 @@ const injecoesUsinas = ref()
   const infoUsinas = ref()
   const { data: unidades } = await useFetch(`${API_BASE_URL}/unidadecompensacao`);
   
+  const normalizeDate = (date) => {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  };
+  //PROCURAR PORCENTAGENS DE ACORDO COM O MES
+  const filtrarPorcentagensPorMes = (porcentagens, mesSelecionado) => { 
+    return porcentagens.filter((porcentagem) => {
+      const dataInicio = new Date(porcentagem.data_inicio);
+      const dataFim = porcentagem.data_fim ? new Date(porcentagem.data_fim) : null;
+ 
+      const anoMesSelecionado = new Date(`${anoSelecionado.value}-${String(mesSelecionado).padStart(2, '0')}-02`);
+ 
+
+      // Verifica se o mês/ano está dentro do intervalo
+      // Comparar apenas ano e mês
+      const isInPeriod =
+        (anoMesSelecionado.getFullYear() > dataInicio.getFullYear() ||
+          (anoMesSelecionado.getFullYear() === dataInicio.getFullYear() &&
+            anoMesSelecionado.getMonth() >= dataInicio.getMonth())) &&
+        (dataFim === null ||
+          anoMesSelecionado.getFullYear() < dataFim.getFullYear() ||
+          (anoMesSelecionado.getFullYear() === dataFim.getFullYear() &&
+            anoMesSelecionado.getMonth() <= dataFim.getMonth()));
+ 
+
+      return isInPeriod;
+
+    });
+  };
+
+
   //PROCURAR USINAS GERADORES DA UNIDADE
   const procurarUsinasGeradores = async () => {
-        const usinasGeradoras = []
-        const {data: porcentagens} = await useFetch(`${API_BASE_URL}/porcentagem?idUnidadeCompensa=${selectedUnidade.value}`)
-        await Promise.all(porcentagens.value.map(async (porcentagem) => {
-            const idUsina = porcentagem.idGeradora;
-                const { data: usina } = await useFetch(`${API_BASE_URL}/usina/${idUsina}`);
-                usinasGeradoras.push(usina._rawValue);
-        })); 
-        return usinasGeradoras;
-  }
-      
+    const usinasGeradoras = [];
+    
+    // Busca todas as porcentagens da unidade selecionada
+    const { data: porcentagens } = await useFetch(`${API_BASE_URL}/porcentagem?idUnidadeCompensa=${selectedUnidade.value}`);
+    
+    // Filtra porcentagens que estão ativas para o mês selecionado
+    const porcentagensFiltradas = filtrarPorcentagensPorMes(porcentagens.value, mesSelecionado.value);
+
+    console.log("PORCENTAGENS FILTRADAS: ", porcentagensFiltradas)
+    // Busca as usinas relacionadas às porcentagens filtradas
+    await Promise.all(
+      porcentagensFiltradas.map(async (porcentagem) => {
+        const idUsina = porcentagem.idGeradora;
+        const { data: usina } = await useFetch(`${API_BASE_URL}/usina/${idUsina}`);
+        usinasGeradoras.push({ ...usina._rawValue, porcentagem });
+      })
+    );
+       console.log("USINAS GERADORAS", usinasGeradoras)
+    return usinasGeradoras;
+  };
+
+
   //PROCURAR USINAS DA UNIDADE COMPENSAÇÃO
   const pesquisarCompensaNovo = async () =>{
     pesquisaCarregada.value = true
@@ -692,9 +745,11 @@ const injecoesUsinas = ref()
     if(mesSelecionado.value == 12){
       mesSelecionado.value = 1;
       pesquisarRelatorio()
+      pesquisarCompensaNovo()
     }else{
       mesSelecionado.value++;
       pesquisarRelatorio()
+      pesquisarCompensaNovo()
     }
   }  
   const diminuirMes = async() =>{
@@ -704,9 +759,11 @@ const injecoesUsinas = ref()
     if(mesSelecionado.value == 1){
       mesSelecionado.value = 12;
       pesquisarRelatorio()
+      pesquisarCompensaNovo()
     }else{
       mesSelecionado.value--;
       pesquisarRelatorio()
+      pesquisarCompensaNovo()
     }
   }
 
@@ -906,6 +963,8 @@ const injecoesUsinas = ref()
                                 <v-chip-group mandatory @click="pesquisarConsumo"  v-model="selectedYearConsumo" selected-class="text-warning">
                                   <v-chip value="2023">2023</v-chip>
                                   <v-chip value="2024">2024</v-chip>
+                                  <v-chip value="2025">2025</v-chip>
+                                  <v-chip value="2026">2026</v-chip>
                                 </v-chip-group>
                               </td>
                             </tr>
@@ -940,6 +999,8 @@ const injecoesUsinas = ref()
                               <td class="header-cell2">
                                 <select v-if="selectedUsinaInjetado" v-model="selectedYearInjetado" class="custom-select" style="width: 100%">
                                     <option disabled value="">Selecione...</option>
+                                    <option value="2026">2026</option>
+                                    <option value="2025">2025</option>
                                     <option value="2024">2024</option>
                                     <option value="2023">2023</option>
                                 </select> 
@@ -985,6 +1046,8 @@ const injecoesUsinas = ref()
                               <td class="header-cell2" >
                                 <select v-if="selectedUsina" v-model="selectedYear" class="custom-select" style="width: 100%">
                                   <option disabled value="">Selecione...</option>
+                                  <option value="2026">2026</option>
+                                  <option value="2025">2025</option>
                                   <option value="2024">2024</option>
                                   <option value="2023">2023</option>
                                 </select>
@@ -1086,6 +1149,8 @@ const injecoesUsinas = ref()
                               <td style="padding: 10px;" class="header-cell2">
                                 <select  v-model="selectedYearGeral" class="custom-select" style="width: 100%">
                                     <option disabled value="">Selecione...</option>
+                                    <option value="2026">2026</option>
+                                    <option value="2025">2025</option>
                                     <option value="2024">2024</option>
                                     <option value="2023">2023</option>
                                 </select>   
@@ -1661,21 +1726,25 @@ const injecoesUsinas = ref()
                             <tr v-for="usina in infoUsinas" :key="usina.id"> 
                               <td>{{ usina.uc }}</td>
                               <td colspan="2">{{ usina.nome }}</td>
-                              <td   style="padding: 0px;">  
-                                <span v-for="porcento in todasPorcento" :key="porcento.id">{{
-                                  porcento.idUnidadeCompensa === infoUnidade.id && porcento.idGeradora === usina.id ? porcento.porcentagem : ''
-                                }}</span>%   
-                              </td>
+                              <td>{{usina.porcentagem.porcentagem}}%</td>
+                              <!-- <td   style="padding: 0px;">  
+                                <span v-for="porcento in usina.porcentagem" :key="porcento.id">
+                                  {{ porcento.porcentagem }}%
+                                </span>  
+                              </td> -->
                               <td>
                                 {{procurarInjecao(usina.id, infoUnidade.id, 1)}}
                               </td>
                               <td>
-                                <span v-for="porcento in todasPorcento" :key="porcento.id">
-                                  <div v-if="porcento.idUnidadeCompensa === infoUnidade.id && porcento.idGeradora === usina.id">
-                                    {{  (Number(procurarInjecao(usina.id, 0, 2) / 100) * porcento.porcentagem).toFixed(2) }}
-                                  </div> 
-                                </span> 
+                                {{ (Number(procurarInjecao(usina.id, 0, 2) / 100) * usina.porcentagem.porcentagem).toFixed(2) }}
                               </td>
+                              <!-- <td>
+                                <span v-for="porcento in usina.porcentagem" :key="porcento.id">
+                                  <div>
+                                    {{ (Number(procurarInjecao(usina.id, 0, 2) / 100) * porcento.porcentagem).toFixed(2) }}
+                                  </div>
+                                </span>
+                              </td> -->
                             </tr>
 
                             <tr>

@@ -71,7 +71,7 @@
                         <v-col cols="4" v-for="info in dadosStringsPaco" :key="info">
                             <v-card elevation="5">
                                 <v-card-title class="text-h5 text-center">
-                                    <v-chip color="error">STRINGs IRREGULAS</v-chip>
+                                    <v-chip color="error">STRINGs IRREGULARES</v-chip>
                                     <br>
                                     {{ info.nomeUsina }}
                                     <v-divider></v-divider>

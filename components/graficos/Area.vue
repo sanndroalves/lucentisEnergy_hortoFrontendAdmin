@@ -26,47 +26,43 @@ const somarIndividualReal = async (anoId) => {
         
     };
 
-//SOMA POR MES 2024
-const valores2024 = await somarIndividualReal(2024) 
-const valoresCompletos2024 = ref([]);
+const anos = [2026, 2025, 2024, 2023];
+const valoresCompletos = ref({});
 
-// Preencher valoresCompletos2024
-for (let i = 0; i < 13; i++) {
-  if (i === 0) {
-    valoresCompletos2024.value[0] = 0;  // Acessa o valor com `.value`
-  } else {
-    valoresCompletos2024.value[i] = valores2024[i] || 0;
-  }
-}
-
-// SOMA POR MES 2023
-const valores2023 = await somarIndividualReal(2023);
-const valoresCompletos2023 = ref([]);
-
-// Preencher valoresCompletos2023
-for (let i = 0; i < 13; i++) {
-  if (i === 0) {
-    valoresCompletos2023.value[0] = 0;
-  }else{
-   valoresCompletos2023.value[i] = valores2023[i] || 0; 
-  }
+const preencherValores = async (ano) => {
+  const valores = await somarIndividualReal(ano);
+  const valoresCompletosAno = [];
   
-}
+  for (let i = 0; i < 13; i++) {
+    valoresCompletosAno[i] = i === 0 ? 0 : valores[i] || 0;
+  }
 
-// Remover o primeiro índice dos arrays
-valoresCompletos2024.value = valoresCompletos2024.value.slice(1);
-valoresCompletos2023.value = valoresCompletos2023.value.slice(1);
+  return valoresCompletosAno.slice(1); // Remove o primeiro índice
+};
+
+// Preencher os valores para cada ano desejado
+for (let ano of anos) {
+  valoresCompletos.value[ano] = await preencherValores(ano);
+}
 
 
 const options = {
   series: [
     {
+      name: "Geração - 2026",
+      data: valoresCompletos.value[2026]
+    },
+    {
+      name: "Geração - 2025",
+      data: valoresCompletos.value[2025]
+    },
+    {
       name: "Geração - 2024",
-      data: valoresCompletos2024.value
+      data: valoresCompletos.value[2024]
     },
     {
       name: "Geração - 2023",
-      data: valoresCompletos2023.value
+      data: valoresCompletos.value[2023]
     }
   ],
   chart: {
@@ -96,7 +92,7 @@ const options = {
     curve: 'smooth'
   },
   title: {
-    text: 'Geração dos meses no ano de 2024 e 2023',
+    text: 'Geração dos meses no ano de 2026, 2025, 2024, 2023',
     align: 'left'
   },
   grid: {

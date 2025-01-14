@@ -54,6 +54,12 @@ const agruparPorMesEAno = (agendamentos, anoSelecionado) => {
 
  
     //GERANDO DADOS COM OS ANOS
+    const agendamentos2026 = agruparPorMesEAno(agendamentosComDatas, 2026);
+    const valores2026 = Object.values(agendamentos2026)
+
+    const agendamentos2025 = agruparPorMesEAno(agendamentosComDatas, 2025);
+    const valores2025 = Object.values(agendamentos2025)
+
     const agendamentos2024 = agruparPorMesEAno(agendamentosComDatas, 2024);
     const valores2024 = Object.values(agendamentos2024)
 
@@ -68,6 +74,11 @@ const agruparPorMesEAno = (agendamentos, anoSelecionado) => {
 
 
   const series = ref([
+  {
+      name: '2024',
+      data: valores2024
+    },
+  
     {
       name: '2024',
       data: valores2024

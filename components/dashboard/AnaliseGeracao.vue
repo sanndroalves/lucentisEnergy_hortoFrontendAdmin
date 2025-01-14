@@ -8,8 +8,15 @@ const theme = useTheme();
 const primary = theme.current.value.colors.primary;
 const lightprimary = theme.current.value.colors.lightprimary;
 
-const anoAtual = new Date().getFullYear();  
-const { data: dados } = await useFetch(`${API_BASE_URL}/salvar?ano=${anoAtual}`);
+const anoAtual = new Date().getFullYear();
+const mesAtual = new Date().getMonth(); // Janeiro = 0
+
+// Verifica se é janeiro e ajusta o ano para o ano anterior, se necessário
+const anoParaBuscar = mesAtual === 0 ? anoAtual - 1 : anoAtual;
+
+// Faz a requisição com o ano ajustado
+const { data: dados } = await useFetch(`${API_BASE_URL}/salvar?ano=${anoParaBuscar}`);
+
 
 const ultDados = dados.value[0];
 
@@ -51,6 +58,7 @@ const chartOptions = computed(() => {
 
 const projecao = ref(0)
 const real = ref(0)
+
 if(ultDados !== undefined){
     projecao.value = ultDados.ultimaProjecao
     real.value = ultDados.ultimaReal

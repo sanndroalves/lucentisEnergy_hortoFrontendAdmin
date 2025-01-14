@@ -14,6 +14,7 @@ definePageMeta({
 import UiParentCard from '@/components/shared/UiParentCard.vue'; 
 
 import { ref } from 'vue';
+import { SearchIcon } from 'vue-tabler-icons';
 
 const { data: predios } = await useFetch(`${API_BASE_URL}/unidadecompensacao/`);
 const { data: usinas } = await useFetch(`${API_BASE_URL}/usina/`);
@@ -81,6 +82,35 @@ const procurarGeradora = (geradoraId) =>{
   const listaGeradora = usinas.value.filter(usina => usina.id === geradoraId)
   return listaGeradora
 }
+
+
+/* LISTAGEM DE PORCENTAGENS */
+// Variáveis reativas
+const dialogOpen = ref(false);
+const porcentagensAtivas = ref([]);
+const porcentagensHistoricas = ref([]);
+
+const openDialog = (predioId) => {
+  // Carregar as porcentagens do prédio
+  const porcentagens = procurarPorcentagem(predioId);
+
+  // Separar em ativas e históricas
+  porcentagensAtivas.value = porcentagens.filter((p) => !p.data_fim);
+  porcentagensHistoricas.value = porcentagens.filter((p) => p.data_fim);
+
+  dialogOpen.value = true;
+};
+
+
+// Função para formatar datas no formato MM/YYYY
+const formatarData = (data) => {
+  if (!data) return ''; // Caso a data seja nula ou indefinida
+  const date = new Date(data);
+  return `${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
+};
+
+
+
 
 /* ADICIONAR GERADORA AO PRÉDIO*/
 const dialogGeradora = ref(false)
@@ -559,6 +589,8 @@ const deletePorcetagem = async (idPorcentagem) =>{
 
             const { data: listaPorcentoNova } = await useFetch(`${API_BASE_URL}/porcentagem/`);
             listaPorcento.value = listaPorcentoNova._value;
+ 
+            porcentagensAtivas.value = porcentagensAtivas.value.filter((porcentagem) => porcentagem.id !== idPorcentagem);
 
         } catch (error) {
             console.error("Erro ao excluir porcentagem:", error);
@@ -688,6 +720,11 @@ const contaOutros = predios.value.filter(item => item.secretaria === 'O')
                                   <v-chip value="S">Saúde</v-chip>
                                   <v-chip value="O">Outros</v-chip>
                                 </v-chip-group>
+                                <!-- <v-chip-group mandatory v-model="statusSelecionado" selected-class="text-primary">
+                                  <v-chip value="L">Ligado</v-chip>
+                                  <v-chip value="P">Desligado</v-chip>
+                                  <v-chip value="O">Manutenção</v-chip>
+                                </v-chip-group> -->
                             </v-col>
                           </v-row>
                             <table class="table">
@@ -695,7 +732,7 @@ const contaOutros = predios.value.filter(item => item.secretaria === 'O')
                                 <tr>
                                   <th class="header-cell">UC</th>
                                   <th class="header-cell">Nome</th>
-                                  <th class="header-cell">CEP</th>
+                                  <th class="header-cell">Tensão</th>
                                   <th class="header-cell">Status</th>
                                   <th class="header-cell">Geradora</th>
                                   <th class="header-cell">Secretaria</th>
@@ -706,13 +743,14 @@ const contaOutros = predios.value.filter(item => item.secretaria === 'O')
                                 <tr v-for="(predio, index) in categoriaSelecionada(predios)" :key="index">
                                   <td>{{ predio.uc }}</td>
                                   <td>{{ predio.nome }}</td>
-                                  <td>{{ predio.cep }}</td>
+                                  <td class="text-center">{{ predio.tensao }}</td>
                                   <td class="text-center">
                                     <v-chip variant="flat" :color="predio.status === 'L' ? 'success' : 'error'" text>
                                       {{ getStatusLabel(predio.status) }}
                                     </v-chip>
                                   </td>
-                                  <td class="text-center">
+                                  
+                                  <!-- <td class="text-center">
                                     <template v-if="predio.status === 'L'">
                                       <v-chip variant="flat" class="mb-2 ml-2 " v-for="(qtd, index) in procurarPorcentagem(predio.id)" :key="index" color="secondary">
                                         <span v-for="geradora in procurarGeradora(qtd.idGeradora)" :key="geradora.id">{{ geradora.uc }}</span> -
@@ -733,7 +771,24 @@ const contaOutros = predios.value.filter(item => item.secretaria === 'O')
                                       </v-chip>
                                     </template>
                                     
+                                  </td> -->
+
+                                  <td class="text-center">
+                                    <template v-if="predio.status === 'L'"> 
+                                      <v-btn @click="openDialog(predio.id)" size="30" icon class="bg-primary mr-2">
+                                          <v-avatar size="30" class="text-white">
+                                              <SearchIcon size="18" />
+                                          </v-avatar>
+                                          <v-tooltip activator="parent" location="bottom">Ver Porcentagens</v-tooltip>
+                                      </v-btn>
+                                    </template>
+
+                                    <template v-else>
+                                      <v-chip variant="flat" color="secondary" text>Off</v-chip>
+                                    </template>
                                   </td>
+
+
                                   <td class="text-center">
                                     <v-chip :color="getStatusColorClass(predio.secretaria)" text>
                                       {{ getStatusSecretaria(predio.secretaria)  }}
@@ -845,6 +900,85 @@ const contaOutros = predios.value.filter(item => item.secretaria === 'O')
     </v-dialog>
     </v-row>
 
+    <v-row justify="center">
+      <!-- Dialog -->
+      <v-dialog v-model="dialogOpen" max-width="600"> 
+        <v-card>
+          <v-card-title>Porcentagens para o Prédio</v-card-title>
+          <v-card-text>
+            <v-expansion-panels>
+              <!-- Painel para Porcentagens Ativas -->
+              <v-expansion-panel class="mb-5">
+                <v-expansion-panel-title>
+                  Porcentagens Ativas
+                </v-expansion-panel-title>
+                <v-expansion-panel-text>
+                  <v-chip
+                    v-for="(qtd, index) in porcentagensAtivas"
+                    :key="index"
+                    variant="flat"
+                    class="mb-2 ml-2"
+                    color="secondary"
+                  >
+                    <span
+                      v-for="geradora in procurarGeradora(qtd.idGeradora)"
+                      :key="geradora.id"
+                    >
+                      {{ geradora.uc }}
+                    </span>
+                    - {{ qtd.porcentagem }}%
+
+                    <v-btn
+                      @click="deletePorcetagem(qtd.id)"
+                      size="20"
+                      icon
+                      class="bg-error ml-2"
+                    >
+                      <v-avatar size="20" class="text-white">
+                        <XIcon size="15" />
+                      </v-avatar>
+                      <v-tooltip activator="parent" location="bottom">
+                        Remover Geradora
+                      </v-tooltip>
+                    </v-btn>
+                  </v-chip>
+                </v-expansion-panel-text>
+              </v-expansion-panel>
+              
+              <!-- Painel para Porcentagens Históricas -->
+              <v-expansion-panel>
+                <v-expansion-panel-title>
+                  Porcentagens Históricas
+                </v-expansion-panel-title>
+                <v-expansion-panel-text>
+                  <v-chip
+                    v-for="(qtd, index) in porcentagensHistoricas"
+                    :key="index"
+                    variant="flat"
+                    class="mb-2 ml-2"
+                    color="secondary"
+                  >
+                    <span
+                      v-for="geradora in procurarGeradora(qtd.idGeradora)"
+                      :key="geradora.id"
+                    >
+                      {{ geradora.uc }}
+                    </span>
+                    - {{ qtd.porcentagem }}% ({{ formatarData(qtd.data_inicio) }} - {{ formatarData(qtd.data_fim) }})
+                  </v-chip>
+                </v-expansion-panel-text>
+              </v-expansion-panel>
+            </v-expansion-panels>
+          </v-card-text>
+          <v-card-actions>
+            <v-spacer></v-spacer>
+            <v-btn @click="dialogOpen = false" color="primary" text>
+              Fechar
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+        </v-dialog>
+    </v-row>
     <!--ADICIONAR PRÉDIO PÚBLICO-->
     <v-row justify="center">
       <v-dialog v-model="dialogNovaUnidade" width="1024">

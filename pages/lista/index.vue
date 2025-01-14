@@ -25,7 +25,8 @@
   const calculoPosAutoConsumo = ref(0);
   const creditoParaInjecao = ref(0); 
 
-  const anoAtual = new Date().getFullYear();
+  const mesAtual = new Date().getMonth() + 1;  
+  const anoAtual = mesAtual === 1 ? new Date().getFullYear() -1 : new Date().getFullYear();
 
   // Função para buscar dados das usinas e unidades
   const fetchData = async () => {
@@ -72,7 +73,7 @@
 
   // Função para calcular o total projetado
   const calcularTotalProjetado = async (idGeradoraRemovida) => {
-    somaProjecao.value = await somarIndividualProjecao(2024, idGeradoraRemovida);
+    somaProjecao.value = await somarIndividualProjecao(anoAtual, idGeradoraRemovida);
     const valoresProjetado = Object.values(somaProjecao.value);
     totalProjetado.value = parseFloat(valoresProjetado.reduce((total, valor) => total + valor, 0).toFixed(2));
   }; 
@@ -109,75 +110,137 @@
   const calcularMediaConsumo = async () => { 
     const { data: relatorios } = await useFetch(`${API_BASE_URL}/relatoriocompensacao`);
     
- 
     for (const unidade of unidadesCompensadas.value) {  
       const relatoriosDaUnidade = relatorios.value.filter(item => item.idUnidadeCompensa === unidade.id);
- 
-      if (relatoriosDaUnidade.length > 0) {
-        const relatoriosOrdenados = relatoriosDaUnidade.sort((a, b) => new Date(b.data) - new Date(a.data)); // Ordem decrescente de data
 
+      if (relatoriosDaUnidade.length > 0) {
+        // Ordenar por ano e mês (mais recente primeiro)
+        const relatoriosOrdenados = relatoriosDaUnidade.sort((a, b) => {
+          if (b.ano === a.ano) {
+            return b.mes - a.mes; // Meses do mesmo ano: mais recente primeiro
+          }
+          return b.ano - a.ano; // Anos diferentes: mais recente primeiro
+        });
+
+        // Selecionar os 6 últimos registros
         const ultimos6Relatorios = relatoriosOrdenados.slice(0, 6);
 
+        // Calcular a média do consumo
         const somaConsumo = ultimos6Relatorios.reduce((soma, item) => soma + parseFloat(item.consumokWh || 0), 0);
         const mediaConsumo = somaConsumo / ultimos6Relatorios.length; 
         unidade.mediaConsumo = mediaConsumo.toFixed(2);
+
+        // Verificar os últimos 3 relatórios para saldoEnergia
+        const ultimos3Relatorios = relatoriosOrdenados.slice(0, 3); // Pega os últimos 3
+        const saldoEnergiaPreenchido = ultimos3Relatorios.every(item => parseFloat(item.saldoEnergia || 0) !== 0);
+        const saldoEnergiaStatus = saldoEnergiaPreenchido ? "True" : "False";
+
+        // Adicionar unidade com a média calculada e status de saldoEnergia
+        unidadesComMediaConsumo.value.push({
+          uc: unidade.uc,
+          nome: unidade.nome,
+          mediaConsumo: unidade.mediaConsumo,
+          saldoEnergia: saldoEnergiaStatus,
+        });
       } else {
+        // Caso não haja relatórios, definir mediaConsumo como 0
         unidade.mediaConsumo = 0;
+
+        // Adicionar unidade com saldoEnergia como "NÃO"
+        unidadesComMediaConsumo.value.push({
+          uc: unidade.uc,
+          nome: unidade.nome,
+          mediaConsumo: unidade.mediaConsumo,
+          saldoEnergia: "False",
+        });
       }
+    } 
+
+    // Ordenar unidades pela média de consumo, do maior para o menor
+    unidadesComMediaConsumo.value.sort((a, b) => b.mediaConsumo - a.mediaConsumo);
+  };
  
-      unidadesComMediaConsumo.value.push({
+//VEFICIAR SE TEM SALDO
+const verificarSaldoEnergia = () => {
+  return unidadesComMediaConsumo.value.some(unidade => unidade.saldoEnergia === "True");
+};
+ 
+// CALCULAR LIST DE RATEIO
+const unidadesListaDeRateio = ref([]);
+
+const calcularRateio = (creditoParaInjecao) => {
+  let creditoRestante = creditoParaInjecao;
+
+  unidadesListaDeRateio.value = unidadesComMediaConsumo.value
+    .filter(unidade => unidade.mediaConsumo >= 200) // Apenas prédios com consumo médio acima de 200 kWh
+    .map(unidade => {
+      let injetar = 0;
+
+      if (unidade.mediaConsumo > 2000) {
+        injetar = unidade.mediaConsumo - 1000;
+      } else if (unidade.mediaConsumo > 1300) {
+        injetar = 1200;
+      } else if (unidade.mediaConsumo > 1000) {
+        injetar = 1000;
+      } else if (unidade.mediaConsumo > 700) {
+        injetar = 500;
+      } else if (unidade.mediaConsumo > 400) {
+        injetar = 300;
+      } else if (unidade.mediaConsumo > 300) {
+        injetar = 200;
+      } else if (unidade.mediaConsumo > 200) {
+        injetar = 100;
+      }
+
+      if (injetar > creditoRestante) {
+        injetar = creditoRestante; // Limita a injeção ao crédito restante
+      }
+
+      const porcentagemInjetada = ((injetar / creditoParaInjecao) * 100).toFixed(2); // Porcentagem do total de crédito
+
+      creditoRestante -= injetar; // Subtrai o valor injetado do crédito restante
+
+      return {
         uc: unidade.uc,
         nome: unidade.nome,
         mediaConsumo: unidade.mediaConsumo,
-      });
-    } 
-
-    unidadesComMediaConsumo.value.sort((a, b) => b.mediaConsumo - a.mediaConsumo);
-  };
-
-  console.log("Unidades ordenadas por média de consumo:", unidadesComMediaConsumo.value);
-
-
-  
-
-
-
-
-
-
-
-
-
-
-  import * as XLSX from "xlsx";
-
-// Simulação de dados gerados 
-
-// Função para exportar
-const exportarExcel = () => {
-  exportarParaExcel(unidadesComMediaConsumo.value);
+        injetado: injetar,
+        porcentagemInjetada,
+        creditoRestante: creditoRestante.toFixed(2),
+      };
+    })
+    .filter(unidade => unidade.injetado > 0); // Apenas unidades que receberam injeção
+ 
 };
+ 
 
-// Função de exportação
-const exportarParaExcel = (dados) => {
-  if (!dados || dados.length === 0) {
-    console.error("Nenhum dado disponível para exportar.");
+import * as XLSX from "xlsx";
+
+// Função para exportar a lista de rateio para Excel
+const exportarParaExcel = () => {
+  if (unidadesListaDeRateio.value.length === 0) {
+    console.warn("Nenhum dado disponível para exportar.");
     return;
   }
 
-  const dadosFormatados = dados.map(({ uc, nome, mediaConsumo }) => ({
-    UC: uc,
-    Nome: nome,
-    "Média Consumo (kWh)": mediaConsumo,
+  // Preparar os dados para a planilha
+  const dados = unidadesListaDeRateio.value.map(unidade => ({
+    UC: unidade.uc,
+    Nome: unidade.nome,
+    "Consumo Médio (kWh)": unidade.mediaConsumo,
+    "Energia Injetada (kWh)": unidade.injetado,
+    "Porcentagem Injetada (%)": unidade.porcentagemInjetada,
+    "Crédito Restante (kWh)": unidade.creditoRestante,
   }));
 
-  const worksheet = XLSX.utils.json_to_sheet(dadosFormatados);
+  // Criar uma nova planilha
+  const worksheet = XLSX.utils.json_to_sheet(dados);
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Unidades");
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Rateio");
 
-  XLSX.writeFile(workbook, "UnidadesComMediaConsumo.xlsx");
+  // Salvar o arquivo como Excel
+  XLSX.writeFile(workbook, "Rateio.xlsx");
 };
-
 </script>
 
 <template>
@@ -282,11 +345,24 @@ const exportarParaExcel = (dados) => {
                           </thead>
                       </v-table>
                     </v-row>  
-                </div> 
-
-                <v-btn @click="exportarExcel" class="bg-primary text-white">
-    Exportar para Excel
-  </v-btn>
+                    <v-row class="mt-10" justify="space-around">
+                    <div>
+                      <b>Unidades com Saldo:</b> 
+                      <span v-if="!verificarSaldoEnergia()" class="ml-5" style="color: red;"><b>NÃO HÁ UNIDADES COM SALDO</b></span>
+                      <span v-else class="ml-5" style="color: green;"><b>UNIDADES COM SALDO</b></span>
+                    </div>
+                    </v-row>
+                    <v-row class="mt-10" justify="space-around">
+                      <v-btn v-if="verificarSaldoEnergia()"  @click="calcularRateio(creditoParaInjecao);" class="bg-success text-white">
+                        Calcular Lista
+                      </v-btn>
+                      <v-btn v-if="verificarSaldoEnergia() && unidadesListaDeRateio.length > 0" @click="exportarParaExcel()" class="bg-primary text-white">
+                        Exportar para Excel
+                      </v-btn>
+                    </v-row>
+                </div>  
+                <br>
+                
             </UiParentCard>
         </v-col>
     </v-row>

@@ -82,14 +82,18 @@ const calcularSomaPorAno = (relatorios) => {
     return somaPorAno;
 };
 
-const anoId = ref(2024)
+const anoId = ref(new Date().getFullYear());
 const totalAnual = ref(0)
 const somaTotalAnual = ref(0)
-const mudarAno = () =>{
-    anoId.value = anoId.value === 2024 ? 2023 : 2024;
-    carregarDados(anoId.value);
+const mudarAno = () => {
+  const limiteSuperior = 2026; // O maior ano permitido
+  const limiteInferior = 2023; // O menor ano permitido
+ 
+  anoId.value = anoId.value < limiteSuperior ? anoId.value + 1 : limiteInferior;
 
-}
+  carregarDados(anoId.value);
+};
+
 const carregarDados = async (ano) => {
     const { data: relatorioPesquisa } = await useFetch(`${API_BASE_URL}/relatoriocompensacao?ano=${ano}`);
     novaLista.value = calcularSomaPorMes(relatorioPesquisa._value);
