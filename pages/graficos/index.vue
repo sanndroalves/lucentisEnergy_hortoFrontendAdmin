@@ -7,7 +7,7 @@ useHead ({
 });
 
 definePageMeta({
-    middleware: 'auth'
+  middleware: 'sidebase-auth'
 })
 
 import { ref } from "vue";

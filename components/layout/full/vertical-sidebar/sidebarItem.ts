@@ -100,8 +100,8 @@ const sidebarItem: menu[] = [
         icon: RobotIcon,                               
         to: '/contas/',
         chip: '[MANUT]',
-        chipColor: 'error',
-        disabled: true
+        chipColor: 'error'
+        // disabled: true
     },
     
     // {

@@ -8,7 +8,7 @@ useHead ({
 });
 
 definePageMeta({
-    middleware: 'auth'
+  middleware: 'sidebase-auth'
 })
  
 import Automatizacao from '@/components/predios/automatizacao.vue';

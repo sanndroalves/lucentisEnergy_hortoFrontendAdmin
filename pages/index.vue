@@ -10,7 +10,7 @@ useHead ({
 });
 
 definePageMeta({
-    middleware: 'auth'
+  middleware: 'sidebase-auth'
 })
 
 import RelatorioGeracao from "~~/components/dashboard/RelatorioGeracao.vue";
@@ -238,7 +238,7 @@ onMounted(() => {
           
           
           <div class="mb-6">
-            <Alerta />
+            <!-- <Alerta /> -->
           </div> 
           <div class="mb-15">
             <!-- <VerificarStrings />  -->

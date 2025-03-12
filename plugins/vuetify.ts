@@ -11,6 +11,8 @@ import {
   PurpleTheme,
 } from "@/theme/LightTheme";
 export default defineNuxtPlugin((nuxtApp) => {
+  if (!nuxtApp.vueApp) return;
+
   const vuetify = createVuetify({
     components,
     directives,

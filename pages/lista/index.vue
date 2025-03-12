@@ -11,8 +11,8 @@
 
   // Definindo o middleware para a página
   definePageMeta({
-    middleware: 'auth'
-  });
+    middleware: 'sidebase-auth'
+  })
 
   // Definindo variáveis reativas
   const consumoMedio = ref(null);

@@ -10,7 +10,7 @@ useHead ({
 });
 
 definePageMeta({
-    middleware: 'auth'
+  middleware: 'sidebase-auth'
 })
 
 import UiParentCard from '@/components/shared/UiParentCard.vue';
