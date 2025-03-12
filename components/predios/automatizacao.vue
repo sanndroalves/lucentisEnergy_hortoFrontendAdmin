@@ -11,6 +11,7 @@
     const { data: dadosDownload } = await useFetch(`${API_BASE_URL}/logdownloadpdf/`);
 
     
+    
     //SE TIVER ALGUMA SOLICITAÇÃO EM ANDAMENTO, MOSTRA OS DADOS DELA
     const { data: solicitacoes } = await useFetch(`${API_BASE_URL}/logsolicitacao/`); 
 
