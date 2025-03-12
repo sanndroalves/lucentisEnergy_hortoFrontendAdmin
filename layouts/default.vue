@@ -1,5 +1,6 @@
 <script setup >
 import { RouterView } from 'vue-router';
+import { API_BASE_URL } from '~/base/link';
 const title = ref("Carregar • PEE Horto");
 
 useHead({
@@ -14,7 +15,7 @@ useHead({
 const { data } = useAuth() 
 const idUsuario = ref(data.value.id)
 
-const { data: usuarioInfo } = await useFetch(`https://peehorto.cloud/usuarios/${idUsuario.value}`); 
+const { data: usuarioInfo } = await useFetch(`${API_BASE_URL}/usuarios/${idUsuario.value}`); 
 console.log("CARGO: ", usuarioInfo.value.cargo)
 </script>
 

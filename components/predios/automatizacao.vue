@@ -4,7 +4,7 @@
     import { API_BASE_URL } from '~/base/link';
     
     const { data } = useAuth()
-    const idUsuario = ref(JSON.stringify(data.value.results[0].id))
+    const idUsuario = ref(JSON.stringify(data.value.id))
 
     const idSolicitacao = ref('-')
     const btnSolicita = ref(true) 
@@ -12,7 +12,7 @@
 
     
     //SE TIVER ALGUMA SOLICITAÇÃO EM ANDAMENTO, MOSTRA OS DADOS DELA
-    const { data: solicitacoes } = await useFetch("${API_BASE_URL}/logsolicitacao/"); 
+    const { data: solicitacoes } = await useFetch(`${API_BASE_URL}/logsolicitacao/`); 
 
     const verificarSoli = ref()   
     const btnS = ref(true) //varia´vel para a div dos botoes solicitções
