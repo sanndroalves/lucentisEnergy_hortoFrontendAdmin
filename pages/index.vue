@@ -16,9 +16,9 @@ definePageMeta({
 import RelatorioGeracao from "~~/components/dashboard/RelatorioGeracao.vue";
 import AnaliseGeracao from "~~/components/dashboard/AnaliseGeracao.vue";
 import GeracaoDinheiro from "@/components/dashboard/GeracaoDinheiro.vue"; 
-import Irregular from "@/components/dashboard/Irregular.vue"; 
-// import Alerta from "@/components/dashboard/Alerta.vue"; 
-// import VerificarStrings from "@/components/dashboard/VerificarStrings.vue"; 
+// import Irregular from "@/components/dashboard/Irregular.vue"; 
+import Alerta from "@/components/dashboard/Alerta.vue"; 
+import VerificarStrings from "@/components/dashboard/VerificarStrings.vue"; 
 
 const { data: usinas } = await useFetch(`${API_BASE_URL}/usina/`); 
 const { data: unidades } = await useFetch( `${API_BASE_URL}/unidadecompensacao`); 
@@ -233,18 +233,18 @@ onMounted(() => {
 
         <v-col cols="12" lg="4">
           <div class="mb-6">
-            <!-- <AnaliseGeracao /> -->
+            <AnaliseGeracao /> 
           </div>
           
           
           <div class="mb-6">
-            <!-- <Alerta /> -->
+            <Alerta />
           </div> 
           <div class="mb-15">
-            <!-- <VerificarStrings />  -->
+            <VerificarStrings />
           </div>  
           <div>
-            <Irregular /> 
+            <!-- <Irregular />  -->
           </div>  
           
            
