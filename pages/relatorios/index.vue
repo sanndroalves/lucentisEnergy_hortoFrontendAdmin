@@ -925,7 +925,7 @@ const injecoesUsinas = ref()
                                 <v-chip-group mandatory v-model="cateSelecionada" @click="mudouCategoria(cateSelecionada)" selected-class="text-primary">
                                   <v-chip value="CONSUMO">Consumo (Unidade)</v-chip>
                                   <v-chip value="INJETADO">Injetado (Usina)</v-chip>
-                                  <v-chip value="COMPENSA">Compensação (Usina)</v-chip>
+                                  <!-- <v-chip value="COMPENSA">Compensação (Usina)</v-chip> -->
                                   <v-chip value="COMPENSANOVO">Compensação (Unidade)</v-chip>
                                   <v-chip value="GERAL">Geral</v-chip>
                                 </v-chip-group>  
