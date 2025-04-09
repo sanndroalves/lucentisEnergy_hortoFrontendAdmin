@@ -217,6 +217,30 @@ const calcularRateio = (creditoParaInjecao) => {
 import * as XLSX from "xlsx";
 
 // Função para exportar a lista de rateio para Excel
+// const exportarParaExcel = () => {
+//   if (unidadesListaDeRateio.value.length === 0) {
+//     console.warn("Nenhum dado disponível para exportar.");
+//     return;
+//   }
+
+//   // Preparar os dados para a planilha
+//   const dados = unidadesListaDeRateio.value.map(unidade => ({
+//     UC: unidade.uc,
+//     Nome: unidade.nome,
+//     "Consumo Médio (kWh)": unidade.mediaConsumo,
+//     "Energia Injetada (kWh)": unidade.injetado,
+//     "Porcentagem Injetada (%)": unidade.porcentagemInjetada,
+//     "Crédito Restante (kWh)": unidade.creditoRestante,
+//   }));
+
+//   // Criar uma nova planilha
+//   const worksheet = XLSX.utils.json_to_sheet(dados);
+//   const workbook = XLSX.utils.book_new();
+//   XLSX.utils.book_append_sheet(workbook, worksheet, "Rateio");
+
+//   // Salvar o arquivo como Excel
+//   XLSX.writeFile(workbook, "Rateio.xlsx");
+// };
 const exportarParaExcel = () => {
   if (unidadesListaDeRateio.value.length === 0) {
     console.warn("Nenhum dado disponível para exportar.");
@@ -224,13 +248,10 @@ const exportarParaExcel = () => {
   }
 
   // Preparar os dados para a planilha
-  const dados = unidadesListaDeRateio.value.map(unidade => ({
+  const dados = unidadesComMediaConsumo.value.map(unidade => ({
     UC: unidade.uc,
     Nome: unidade.nome,
-    "Consumo Médio (kWh)": unidade.mediaConsumo,
-    "Energia Injetada (kWh)": unidade.injetado,
-    "Porcentagem Injetada (%)": unidade.porcentagemInjetada,
-    "Crédito Restante (kWh)": unidade.creditoRestante,
+    "Consumo Médio (kWh)": unidade.mediaConsumo, 
   }));
 
   // Criar uma nova planilha

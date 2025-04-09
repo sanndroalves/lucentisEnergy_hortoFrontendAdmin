@@ -1223,7 +1223,7 @@ const injecoesUsinas = ref()
                             </tr>
                             <tr>
                               <th class="header-cell text-center" rowspan="2" style="height: 40px;">UC</th>
-                              <th class="header-cell text-center" rowspan="2" style="height: 40px;">Nome</th>
+                              <th class="header-cell text-center" rowspan="2" style="height: 40px;">Nome </th>
                               <!-- <th class="header-cell text-center" rowspan="2" style="height: 40px;">Médio</th> -->
                               <th class="header-cell text-center" rowspan="2" style="height: 40px;">Informações</th>
                             </tr>
@@ -1231,7 +1231,11 @@ const injecoesUsinas = ref()
                           <tbody>
                             <tr v-for="predio in prediosEscolhidos" :key="predio.id">
                               <td>{{ predio.uc }}</td>
-                              <td>{{ predio.nome }}</td>
+                              <td>{{ predio.nome }} <br/> 
+                                    <v-chip variant="flat" :color="predio.status === 'L' ? 'success' : 'error'" text>
+                                      {{ predio.status }}
+                                    </v-chip>
+                              </td>
                               <!-- <td>{{ calcularMedia(relatorios.filter(item => item.idUnidadeCompensa === predio.id && item.ano === selectedYearConsumo)) }}</td> -->
                               <td  class="sticky-cell" style="padding: 5px; text-align: right">
                                 <tr>
