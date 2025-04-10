@@ -6,7 +6,7 @@ import { API_BASE_URL } from '~/base/link';
 
 // Defina o título da página
 useHead ({
-  title: 'Painel'
+  title: 'Controle'
 });
 
 definePageMeta({
@@ -220,7 +220,7 @@ onMounted(() => {
 
       <v-col class="text-center TelaPDF" id="TelaPDF" cols="12">
 
-          <v-btn class="bg-primary"  href="painel/" target="_blank">
+          <v-btn class="bg-primary"  href="https://painel.peehorto.com" target="_blank">
             Painel Central
           </v-btn> 
         </v-col> 
