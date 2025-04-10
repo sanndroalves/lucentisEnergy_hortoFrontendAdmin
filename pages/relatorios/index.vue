@@ -188,7 +188,7 @@ const handlePesquisar = () => {
       return;
     }else{
       const { data: relatorioPesquisa } = await useFetch(`${API_BASE_URL}/relatoriocompensacao?ano=${selectedYearConsumo.value}`);
-      const { data: predios } = await useFetch(`${API_BASE_URL}/unidadecompensacao?categoria=${preSelecionado.value}`);
+      const { data: predios } = await useFetch(`${API_BASE_URL}/unidadecompensacao?categoria=${preSelecionado.value}&status=L`);
 
       relatorios.value = relatorioPesquisa._rawValue;
       prediosEscolhidos.value = predios._rawValue
@@ -474,7 +474,7 @@ const getBG = (rela, index, predioId, predioCategoria) =>{
     const { data: geracaoUsina } = await useFetch(`${API_BASE_URL}/relatoriogeracao?idGeradora=${selectedUsinaInjetado.value}&ano=${selectedYearInjetado.value}`); //GERACAO
 
     relatoriosInjetado.value = relatorioPesquisa._rawValue;
-    usinaEscolhidaInjetado.value = usinas._rawValue;
+    usinaEscolhidaInjetado.value = usinas.value;
     projetadoUsinaInjetada.value = projecaoUsina._rawValue;
     geracaoUsinaInjetada.value = geracaoUsina._rawValue;
 
@@ -573,8 +573,7 @@ const getBG = (rela, index, predioId, predioCategoria) =>{
       const valoresReal = Object.values(somaReal.value);
       const valoresInjetados = Object.values(somaInjetado.value);
       const valoresCompensado = Object.values(somaCompensado.value);
- 
-      console.log("PROJETADO", valoresProjetado)
+  
       totalProjetado.value = parseFloat(valoresProjetado.reduce((total, valor) => total + valor, 0).toFixed(2));
       totalReal.value = parseFloat(valoresReal.reduce((total, valor) => total + valor, 0).toFixed(2));
       totalInjetado.value = parseFloat(valoresInjetados.reduce((total, valor) => total + valor, 0).toFixed(2));
@@ -920,17 +919,16 @@ const injecoesUsinas = ref()
                                 Página para geração de relatórios estatíscos sobre as usinas e unidades consumidoras.
                               </th>
                             </tr>
-                            <tr>
+                            <tr class="d-flex justify-center">
                               <td class="header-cell2">
-                                <v-chip-group mandatory v-model="cateSelecionada" @click="mudouCategoria(cateSelecionada)" selected-class="text-primary">
+                                <v-chip-group mandatory v-model="cateSelecionada" @click="mudouCategoria(cateSelecionada)" selected-class="text-primary"  class="d-flex justify-center">
                                   <v-chip value="CONSUMO">Consumo (Unidade)</v-chip>
                                   <v-chip value="INJETADO">Injetado (Usina)</v-chip>
                                   <!-- <v-chip value="COMPENSA">Compensação (Usina)</v-chip> -->
-                                  <v-chip value="COMPENSANOVO">Compensação (Unidade)</v-chip>
+                                  <v-chip value="COMPENSANOVO">Compensação</v-chip>
                                   <v-chip value="GERAL">Geral</v-chip>
                                 </v-chip-group>  
-                              </td>
-                              
+                              </td> 
                             </tr>   
                           </thead>
                       </v-table>
@@ -1420,7 +1418,12 @@ const injecoesUsinas = ref()
                     <div class="text-center mb-5">
                         <h2>Gráfico</h2>
                     </div>
-                    <RelatorioUsina :idUsina="usinaEscolhidaInjetado.id" :ano="selectedYearInjetado"/>
+                    <RelatorioUsina
+                        v-if="usinaEscolhidaInjetado && usinaEscolhidaInjetado.id && selectedYearInjetado"
+                        :idUsina="usinaEscolhidaInjetado.id"
+                        :ano="selectedYearInjetado"
+                        :key="usinaEscolhidaInjetado.id + '-' + selectedYearInjetado"
+                      /> 
                 </v-card>
 
                 <!-- RELATORIOS COMPENSAÇÃO UNIDADE (FINALIZADO)-->
@@ -1878,7 +1881,7 @@ const injecoesUsinas = ref()
                     <v-divider></v-divider>
                     <!-- INFOS GERAIS -->
                     <v-row class="pa-5" id="tabelaGeral">
-                    <div class="v-col-sm-4 v-col-md-4 v-col-lg-3 v-col-12">
+                    <div class="v-col-sm-6 v-col-md-6 v-col-lg-3 v-col-12">
                       <div
                         class="text-decoration-none d-flex align-center justify-center text-center rounded-md pa-6 bg-lightprimary"
                       >
@@ -1893,7 +1896,7 @@ const injecoesUsinas = ref()
                         </div>
                       </div>
                     </div>
-                    <div class="v-col-sm-4 v-col-md-4 v-col-lg-3 v-col-12">
+                    <div class="v-col-sm-6 v-col-md-6 v-col-lg-3 v-col-12">
                       <div
                         class="text-decoration-none d-flex align-center justify-center text-center rounded-md pa-6 bg-lightsuccess"
                       >
@@ -1908,7 +1911,7 @@ const injecoesUsinas = ref()
                         </div>
                       </div>
                     </div>
-                    <div class="v-col-sm-4 v-col-md-4 v-col-lg-3 v-col-12">
+                    <div class="v-col-sm-6 v-col-md-6 v-col-lg-3 v-col-12">
                       <div
                         class="text-decoration-none d-flex align-center justify-center text-center rounded-md pa-6 bg-lightwarning"
                       >
@@ -1925,7 +1928,7 @@ const injecoesUsinas = ref()
                     </div>
 
 
-                    <div class="v-col-sm-4 v-col-md-4 v-col-lg-3 v-col-12">
+                    <div class="v-col-sm-6 v-col-md-6 v-col-lg-3 v-col-12">
                       <div
                         class="text-decoration-none d-flex align-center justify-center text-center rounded-md pa-6 bg-lightsecondary"
                       >

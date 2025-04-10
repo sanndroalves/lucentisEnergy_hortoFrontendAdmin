@@ -30,6 +30,9 @@ const endMonth = ref("dez");
 
 // Carrega os dados da usina
 watch([() => props.idUsina, () => props.ano], async ([idUsina, ano]) => {
+    if (!idUsina || !ano) return;
+
+    
     const { data: relatorioPesquisaData } = await useFetch(`${API_BASE_URL}/relatoriousina?idGeradora=${idUsina}&ano=${ano}`);
     const { data: projecaoUsinaData } = await useFetch(`${API_BASE_URL}/projecaogeracao?idGeradora=${idUsina}&ano=${ano}`);
     const { data: geracaoUsinaData } = await useFetch(`${API_BASE_URL}/relatoriogeracao?idGeradora=${idUsina}&ano=${ano}`);
@@ -57,7 +60,7 @@ watch([() => props.idUsina, () => props.ano], async ([idUsina, ano]) => {
     for (const item of geracaoUsina.value) {
         geracoes.value.push(item.geracao);
     }
-});
+}, { immediate: true });
 
 // Filtro de período (dados do gráfico)
 const filteredData = computed(() => {
@@ -169,6 +172,7 @@ const chartOptions = computed(() => {
         }
     };
 });
+ 
 </script>
 
 <template>

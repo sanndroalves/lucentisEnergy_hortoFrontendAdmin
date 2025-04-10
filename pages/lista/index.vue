@@ -159,7 +159,7 @@
     // Ordenar unidades pela média de consumo, do maior para o menor
     unidadesComMediaConsumo.value.sort((a, b) => b.mediaConsumo - a.mediaConsumo);
   };
- 
+  
 //VEFICIAR SE TEM SALDO
 const verificarSaldoEnergia = () => {
   return unidadesComMediaConsumo.value.some(unidade => unidade.saldoEnergia === "True");
@@ -252,6 +252,7 @@ const exportarParaExcel = () => {
     UC: unidade.uc,
     Nome: unidade.nome,
     "Consumo Médio (kWh)": unidade.mediaConsumo, 
+    "Saldo": unidade.saldoEnergia
   }));
 
   // Criar uma nova planilha
