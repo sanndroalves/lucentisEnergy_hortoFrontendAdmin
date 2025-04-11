@@ -84,9 +84,11 @@ const sidebarItem: menu[] = [
         title: 'Lista de Rateio',
         icon: FilesIcon,                               
         to: '/lista/', 
-        chip: '★',
-        chipColor: 'primary',
-        // disabled: true,
+        // chip: '★',
+        // chipColor: 'primary',
+        disabled: true, 
+        chip: '[MANUT]',
+        chipColor: 'error'
     },
     
     { header: 'GERENCIAMENTO' },
@@ -95,14 +97,14 @@ const sidebarItem: menu[] = [
         icon: FilePowerIcon,
         to: '/relatorios/'
     },
-    {
-        title: 'Contas',
-        icon: RobotIcon,                               
-        to: '/contas/',
-        chip: '[MANUT]',
-        chipColor: 'error'
-        // disabled: true
-    },
+    // {
+    //     title: 'Contas',
+    //     icon: RobotIcon,                               
+    //     to: '/contas/',
+    //     chip: '[MANUT]',
+    //     chipColor: 'error'
+    //     // disabled: true
+    // },
     
     // {
     //     title: 'Shadow',
