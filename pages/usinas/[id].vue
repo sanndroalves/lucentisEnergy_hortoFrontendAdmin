@@ -37,11 +37,13 @@ definePageMeta({
 
     const geracoes = ref([])
     const somaInjecao = ref(0)
-    const selectedYear = ref('2024');
+    const selectedYear = ref('2025');
 
 
     const toggleYear = async () => {
-        selectedYear.value = selectedYear.value === '2024' ? '2023' : '2024';
+        const years = ['2023', '2024', '2025', '2026'];
+        const currentIndex = years.indexOf(selectedYear.value);
+        selectedYear.value = years[(currentIndex + 1) % years.length];
 
         const { data: proDetalhe } = await useFetch(`${API_BASE_URL}/projecaogeracao?idGeradora=${route.params.id}&ano=${selectedYear.value}`);
         const { data: geraDetalhe } = await useFetch(`${API_BASE_URL}/relatoriogeracao?idGeradora=${route.params.id}&ano=${selectedYear.value}`);
@@ -82,7 +84,7 @@ definePageMeta({
     const dialogGeraConfig2 = ref(false);
 
     const meses = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-    const anos = [2024, 2023];
+    const anos = [2026,2025,2024, 2023];
 
     /* ABRIR CAMPO DE ADICIONAR */
     const openDialogProjecao = () => {
