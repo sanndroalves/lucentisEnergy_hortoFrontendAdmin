@@ -1796,8 +1796,8 @@ definePageMeta({
                                 <BulbIcon size="19" />
                             </v-avatar>
                              
-                            
-                            {{ selectedYear === '2024' ? 'Geração 2024 (kWh)' : 'Geração 2023 (kWh)' }}</h5>
+                            Geração {{ selectedYear }} (kWh)</h5>
+
                     </div>
                     <div class="text-center">
                         <v-btn @click="toggleYear" size="40" icon class="bg-primary mt-2 ml-5 mr-5 mb-2">
@@ -1875,7 +1875,8 @@ definePageMeta({
                             </v-avatar>
                              
                             
-                            {{ selectedYear === '2024' ? 'Injetado 2024 (kWh)' : 'Injetado 2023 (kWh)' }}</h5>
+                            Injetado {{ selectedYear }} (kWh)</h5>
+
                     </div>
                     <div class="text-center">
                         <v-btn @click="openDialogInjecao" size="40" icon class="bg-secondary mt-2 ml-5 mr-5 mb-2">
