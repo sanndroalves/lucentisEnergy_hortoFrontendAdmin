@@ -37,16 +37,16 @@ const sidebarItem: menu[] = [
         title: 'Check-List',
         icon: ClipboardCheckIcon,
         to: '/checklist/', 
-        chip: '★',
-        chipColor: 'primary',
+        // chip: '★',
+        // chipColor: 'primary',
     },
 
     {
         title: 'Gráficos',
         icon: ChartPie2Icon,
         to: '/graficos/', 
-        chip: '★',
-        chipColor: 'primary',
+        // chip: '★',
+        // chipColor: 'primary',
     },
     {
         title: 'Manutenções',
@@ -63,8 +63,8 @@ const sidebarItem: menu[] = [
         title: 'Análises',
         icon: ChartArrowsVerticalIcon,
         to: '/analises/', 
-        chip: '★',
-        chipColor: 'primary',
+        // chip: '★',
+        // chipColor: 'primary',
     },
      
     { header: 'UNIDADES CONSUMIDORAS' },
@@ -72,8 +72,8 @@ const sidebarItem: menu[] = [
         title: 'CIP',
         icon: BulbIcon,                               
         to: '/iluminacao/', 
-        chip: '★',
-        chipColor: 'primary',
+        // chip: '★',
+        // chipColor: 'primary',
     },
     {
         title: 'Prédios Públicos',
