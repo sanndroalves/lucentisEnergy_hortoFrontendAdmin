@@ -89,7 +89,7 @@ import Polar from '@/components/analises/Polar.vue';
   <v-row>
     <v-col cols="12"  >
         <div class="elevation-3">
-          <UiParentCard title="Comparativo anual (2023-2024)"> 
+          <UiParentCard title="Comparativo anual (23 - 24 - 25 - 26)"> 
             <Area />
             </UiParentCard>  
         </div>

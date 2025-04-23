@@ -74,9 +74,13 @@ const agruparPorMesEAno = (agendamentos, anoSelecionado) => {
 
 
   const series = ref([
-  {
-      name: '2024',
-      data: valores2024
+    {
+      name: '2026',
+      data: valores2026
+    },
+    {
+      name: '2025',
+      data: valores2025
     },
   
     {
