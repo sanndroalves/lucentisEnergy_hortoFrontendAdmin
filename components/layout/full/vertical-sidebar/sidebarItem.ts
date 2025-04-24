@@ -1,7 +1,7 @@
 import {
     ApertureIcon,
     CopyIcon, FileIcon, FilesIcon,
-    LayoutDashboardIcon, PlugIcon, BuildingIcon, FilePowerIcon, BoltIcon, ToolIcon, RobotIcon, BulbIcon, ChartArrowsVerticalIcon, ChartPie2Icon, ClipboardCheckIcon
+    LayoutDashboardIcon, PlugIcon, BuildingIcon, FilePowerIcon, BoltIcon, ToolIcon, RobotIcon, BulbIcon, ChartArrowsVerticalIcon, ChartPie2Icon, ClipboardCheckIcon, CheckboxIcon
 } from 'vue-tabler-icons';
 
 export interface menu {
@@ -80,6 +80,18 @@ const sidebarItem: menu[] = [
         icon: BuildingIcon,                               
         to: '/predios/'
     },
+    
+    { header: 'GERENCIAMENTO' },
+    {
+        title: 'Relatórios',
+        icon: FilePowerIcon,
+        to: '/relatorios/'
+    },
+    {
+        title: 'Conclusivo',
+        icon: CheckboxIcon,
+        to: '/conclusivo/'
+    },
     {
         title: 'Lista de Rateio',
         icon: FilesIcon,                               
@@ -89,13 +101,6 @@ const sidebarItem: menu[] = [
         disabled: true, 
         chip: '[MANUT]',
         chipColor: 'error'
-    },
-    
-    { header: 'GERENCIAMENTO' },
-    {
-        title: 'Relatórios',
-        icon: FilePowerIcon,
-        to: '/relatorios/'
     },
     // {
     //     title: 'Contas',
