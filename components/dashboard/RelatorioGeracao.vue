@@ -20,7 +20,7 @@ const carregarDados = async (anoId) => {
     const real = (await useFetch(`${API_BASE_URL}/relatoriogeracao`)).data.value;
 
     if (!projecao || !real) return;
-
+    
     const totalPorMesProjecao = projecao
     .filter(item => item.ano === parseInt(anoId))
     .reduce((acc, item) => {

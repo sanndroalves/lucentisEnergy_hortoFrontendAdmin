@@ -26,7 +26,7 @@ const { data: relatorios } = await useFetch(`${API_BASE_URL}/relatoriocompensaca
 const { data: manutencoes } = await useFetch(`${API_BASE_URL}/manutencao/`);  
 
 const valorIluminacao = unidades.value.filter(item => item.secretaria == 'I' || item.secretaria == 'P') 
-const valoresPredios = unidades.value.filter(item => item.secretaria == 'E' || item.secretaria == 'S' || item.secretaria == 'O')
+const valoresPredios = unidades.value.filter(item => item.secretaria == 'E' || item.secretaria == 'S' || item.secretaria == 'O' && item.status == 'L')
 const valoresUnidadesCompensa = unidades.value.filter(item => item.status == 'L')
 
 const overlay = ref(true);
