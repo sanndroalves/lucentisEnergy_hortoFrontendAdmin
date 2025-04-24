@@ -13,10 +13,13 @@ definePageMeta({
   middleware: 'sidebase-auth'
 })
 
+import { defineAsyncComponent } from 'vue';
+
+
 import RelatorioGeracao from "~~/components/dashboard/RelatorioGeracao.vue";
 import AnaliseGeracao from "~~/components/dashboard/AnaliseGeracao.vue";
 import GeracaoDinheiro from "@/components/dashboard/GeracaoDinheiro.vue"; 
-// import Irregular from "@/components/dashboard/Irregular.vue"; 
+const Irregular = defineAsyncComponent(() => import("@/components/dashboard/Irregular.vue"));
 import Alerta from "@/components/dashboard/Alerta.vue"; 
 import VerificarStrings from "@/components/dashboard/VerificarStrings.vue"; 
 
@@ -67,9 +70,6 @@ onMounted(() => {
 
 </script>
 <template>
-    <v-overlay :model-value="overlay" class="align-center justify-center">
-      <v-progress-circular color="primary" size="64" indeterminate></v-progress-circular>
-    </v-overlay>
     <v-row>
     <div
       class="v-card v-theme--BLUE_THEME v-card--density-default elevation-10 rounded-md v-card--variant-elevated bg-lightprimary elevation-0 rounded-md mb-8"
@@ -244,7 +244,14 @@ onMounted(() => {
             <VerificarStrings />
           </div>  
           <div>
-            <!-- <Irregular />  -->
+            <Suspense>
+              <template #default>
+                <Irregular />
+              </template>
+              <template #fallback>
+                <v-progress-circular indeterminate color="primary" />
+              </template>
+            </Suspense>
           </div>  
           
            
