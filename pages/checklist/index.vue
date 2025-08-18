@@ -24,10 +24,13 @@ const { data: checklists } = await useFetch(`${API_BASE_URL}/checklist/`);
 // CARDS VALORES
 
 const mesAtual = new Date().getMonth() + 1; 
+const anoAtual = new Date().getFullYear();
 
 const mesFilter = checklists.value.filter(item => {
-    const itemMonth = new Date(item.data).getMonth() + 1; // Extrai o mês do item
-    return itemMonth === mesAtual;
+    const date = new Date(item.data);
+    const itemMonth = date.getMonth() + 1; 
+    const itemYear = date.getFullYear();
+    return itemMonth === mesAtual && itemYear === anoAtual;
 });
  
 // FORMULÁRIO CHECKLIST
@@ -59,8 +62,10 @@ const enviarCheck = async () =>{
     const mesAtual = new Date().getMonth() + 1; 
 
     const mesFilter = usinaInfo.value.filter(item => {
-        const itemMonth = new Date(item.data).getMonth() + 1; // Extrai o mês do item
-        return itemMonth === mesAtual;
+        const date = new Date(item.data);
+        const itemMonth = date.getMonth() + 1; 
+        const itemYear = date.getFullYear();
+        return itemMonth === mesAtual && itemYear === anoAtual;
     });
 
     if (usinaInfo && mesFilter.length > 0) {
@@ -112,11 +117,14 @@ const qtdChecks =  (idUsina) =>{
 const verificarStatus = (idUsina) =>{ 
   const mesAtual = new Date().getMonth() + 1; 
   
-  const selectedCheckListUsina = checklists.value.filter(item => item.idUsina == idUsina) 
-  const checkListUsina = selectedCheckListUsina.filter(item =>  { 
-          const itemMonth = new Date(item.data).getMonth() + 1;   
-          return itemMonth === mesAtual; 
-  })
+  const selectedCheckListUsina = checklists.value.filter(item => item.idUsina == idUsina);
+
+const checkListUsina = selectedCheckListUsina.filter(item => { 
+    const date = new Date(item.data);
+    const itemMonth = date.getMonth() + 1;
+    const itemYear = date.getFullYear();
+    return itemMonth === mesAtual && itemYear === anoAtual; 
+});
   
   if(!checkListUsina[0]){
     return "SEM CHECKLIST";

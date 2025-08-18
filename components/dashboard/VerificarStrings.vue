@@ -58,8 +58,7 @@
       </v-expansion-panels>
     </div> 
 
-    <!-- USINA PAÇO MUNICIPAL -->
-    <v-row justify="center">
+    <!-- USINA PAÇO MUNICIPAL --> 
         <v-dialog v-model="dialogStringsPaco" width="1024">
         <v-card>
             <v-card-title style="background: linear-gradient(to bottom, #4d7fff, #1e73be); color: white;">
@@ -99,11 +98,9 @@
                 </v-container>
             </v-card-text> 
         </v-card>
-        </v-dialog>
-    </v-row>
+        </v-dialog> 
 
-    <!-- 17 USINAS -->
-    <v-row justify="center">
+    <!-- 17 USINAS --> 
         <v-dialog v-model="dialogStrings17Usinas" width="1024">
         <v-card>
             <v-card-title style="background: linear-gradient(to bottom, #4d7fff, #1e73be); color: white;">
@@ -143,8 +140,7 @@
                 </v-container>
             </v-card-text> 
         </v-card>
-        </v-dialog>
-    </v-row>
+        </v-dialog> 
   </template>
   
 <style scoped> 

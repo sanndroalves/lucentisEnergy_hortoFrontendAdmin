@@ -49,7 +49,18 @@ definePageMeta({
         const { data: geraDetalhe } = await useFetch(`${API_BASE_URL}/relatoriogeracao?idGeradora=${route.params.id}&ano=${selectedYear.value}`);
         proDetalheAno.value = proDetalhe._value;
         gerDetalheAno.value = geraDetalhe._value;
- 
+        gerDetalheAno.value.sort((a, b) => {
+            // Se quiser considerar também o ano, use:
+            const anoA = a.ano;
+            const anoB = b.ano;
+            const mesA = a.mes;
+            const mesB = b.mes;
+
+            if (anoA !== anoB) {
+                return anoA - anoB;
+            }
+            return mesA - mesB;
+        });
         
         geracoes.value = []
 

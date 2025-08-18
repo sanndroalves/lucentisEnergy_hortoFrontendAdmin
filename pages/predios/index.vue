@@ -486,6 +486,16 @@ const mesRelUni = ref("");
         relatoriosUnidade.value = relatorios._value
         idUnidadeRela.value = unidadeId
     }
+    
+    /* ORDERNAR RELATÓRIOS DE FORMA DECRESCENTE */
+    const relatoriosOrdenados = computed(() => {
+      return [...relatoriosUnidade.value].sort((a, b) => {
+        if (a.ano !== b.ano) {
+          return b.ano - a.ano; // Ano decrescente
+        }
+        return b.mes - a.mes; // Mês decrescente
+      });
+    });
 
     /* DELETAR RELATORIOS */
     const deleteRelatorio = async (relatorioId) => {
@@ -1304,7 +1314,7 @@ const contaOutros = predios.value.filter(item => item.secretaria === 'O')
                     </tr>
                     </thead>
                     <tbody>
-                    <tr v-for="relatorio in relatoriosUnidade" :key="relatorio.id">
+                    <tr v-for="relatorio in relatoriosOrdenados" :key="relatorio.id">
                         <td>{{ relatorio.id }}</td>
                         <td>{{ relatorio.ano }}</td>
                         <td>{{ relatorio.mes }}</td>
@@ -1316,7 +1326,7 @@ const contaOutros = predios.value.filter(item => item.secretaria === 'O')
                             <v-icon color="error">mdi-delete</v-icon>
                     </v-btn>
                     </td>
-                </tr>
+                  </tr>
                 </tbody>
             </v-table>
             </v-container>

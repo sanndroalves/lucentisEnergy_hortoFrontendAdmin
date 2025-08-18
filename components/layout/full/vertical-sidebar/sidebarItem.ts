@@ -53,19 +53,6 @@ const sidebarItem: menu[] = [
         icon: ToolIcon,
         to: '/manutencoes/'
     },
-    { header: 'PEEHORTO.COM' },
-    {
-        title: 'Carregadores',
-        icon: PlugIcon,
-        to: '/carregadores/'
-    },
-    {
-        title: 'Análises',
-        icon: ChartArrowsVerticalIcon,
-        to: '/analises/', 
-        // chip: '★',
-        // chipColor: 'primary',
-    },
      
     { header: 'UNIDADES CONSUMIDORAS' },
     {
@@ -101,6 +88,20 @@ const sidebarItem: menu[] = [
         disabled: true, 
         chip: '[MANUT]',
         chipColor: 'error'
+    },
+
+    { header: 'PEEHORTO.COM' },
+    {
+        title: 'Carregadores',
+        icon: PlugIcon,
+        to: '/carregadores/'
+    },
+    {
+        title: 'Análises',
+        icon: ChartArrowsVerticalIcon,
+        to: '/analises/', 
+        // chip: '★',
+        // chipColor: 'primary',
     },
     // {
     //     title: 'Contas',

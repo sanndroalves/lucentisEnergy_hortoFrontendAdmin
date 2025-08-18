@@ -22,6 +22,7 @@ import GeracaoDinheiro from "@/components/dashboard/GeracaoDinheiro.vue";
 const Irregular = defineAsyncComponent(() => import("@/components/dashboard/Irregular.vue"));
 import Alerta from "@/components/dashboard/Alerta.vue"; 
 import VerificarStrings from "@/components/dashboard/VerificarStrings.vue"; 
+import SolarMan from '~/components/dashboard/SolarMan.vue';
 
 const { data: usinas } = await useFetch(`${API_BASE_URL}/usina/`); 
 const { data: unidades } = await useFetch( `${API_BASE_URL}/unidadecompensacao`); 
@@ -218,12 +219,12 @@ onMounted(() => {
           </div>
         </div>
 
-      <v-col class="text-center TelaPDF" id="TelaPDF" cols="12">
+      <!-- <v-col class="text-center TelaPDF" id="TelaPDF" cols="12">
 
           <v-btn class="bg-primary"  href="https://painel.peehorto.com" target="_blank">
             Painel Central
           </v-btn> 
-        </v-col> 
+        </v-col>  -->
         
         <v-col cols="12" lg="8">
            <GeracaoDinheiro />  
@@ -238,11 +239,11 @@ onMounted(() => {
           
           
           <div class="mb-6">
-            <Alerta />
+            <SolarMan />
           </div> 
-          <div class="mb-15">
+          <!-- <div class="mb-15">
             <VerificarStrings />
-          </div>  
+          </div>   -->
           <div>
             <Suspense>
               <template #default>

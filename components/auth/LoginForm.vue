@@ -82,7 +82,7 @@ const onEnterPress = (event) => {
     </v-col>
     <v-col cols="12" class="pt-0">
       <v-btn @click="overlay = !overlay" type="submit" color="primary" size="large" block flat>
-        Logar
+        Entrar
       </v-btn>
     </v-col>
   </v-row>
