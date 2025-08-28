@@ -251,7 +251,7 @@ const sendGeradora = async () => {
 
 
 const meses = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-const anos = [2024, 2023];
+const anos = [2026, 2025, 2024, 2023];
 
 /* ADICIONAR NOVO RELATÓRIO NA UNIDADE*/
 const mesRelUni = ref("");

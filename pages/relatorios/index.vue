@@ -188,10 +188,10 @@ const handlePesquisar = () => {
       return;
     }else{
       const { data: relatorioPesquisa } = await useFetch(`${API_BASE_URL}/relatoriocompensacao?ano=${selectedYearConsumo.value}`);
-      const { data: predios } = await useFetch(`${API_BASE_URL}/unidadecompensacao?categoria=${preSelecionado.value}&status=L`);
+      const { data: predios } = await useFetch(`${API_BASE_URL}/unidadecompensacao?categoria=${preSelecionado.value}`);
 
       relatorios.value = relatorioPesquisa._rawValue;
-      prediosEscolhidos.value = predios._rawValue
+      prediosEscolhidos.value = predios.value.filter(i => i.status === "L" || i.status === "D");
     }
 
 }
