@@ -2374,8 +2374,8 @@ definePageMeta({
                                     <th class="text-center">UC</th>
                                     <th class="text-center">Nome</th>
                                     <th class="text-center">Porcentagem</th>
-                                    <th class="text-center">2023 </th>
-                                    <th class="text-center">2024</th>
+                                    <!-- <th class="text-center">2023 </th>
+                                    <th class="text-center">2024</th> -->
                                     <th class="text-center">Ações</th>
                                 </tr>
                                 </thead>
@@ -2388,8 +2388,8 @@ definePageMeta({
                                                 porcento.idUnidadeCompensa === unidade.id ? porcento.porcentagem : ''
                                             }}</span>%
                                         </td>
-                                        <td>{{ getQuantidadeRelatorios(unidade.id, 2023) }}</td>
-                                        <td>{{ getQuantidadeRelatorios(unidade.id, 2024) }}</td>
+                                        <!-- <td>{{ getQuantidadeRelatorios(unidade.id, 2023) }}</td>
+                                        <td>{{ getQuantidadeRelatorios(unidade.id, 2024) }}</td> -->
                                         <td>
                                             <v-btn @click="openDialogNovoRelatorio(unidade.id)" size="30" icon class="bg-primary mr-2">
                                                 <v-avatar size="30" class="text-white">

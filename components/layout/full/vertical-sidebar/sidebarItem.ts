@@ -1,7 +1,8 @@
 import {
     ApertureIcon,
     CopyIcon, FileIcon, FilesIcon,
-    LayoutDashboardIcon, PlugIcon, BuildingIcon, FilePowerIcon, BoltIcon, ToolIcon, RobotIcon, BulbIcon, ChartArrowsVerticalIcon, ChartPie2Icon, ClipboardCheckIcon, CheckboxIcon
+    LayoutDashboardIcon, PlugIcon, BuildingIcon, FilePowerIcon, BoltIcon, ToolIcon, RobotIcon, BulbIcon, ChartArrowsVerticalIcon, ChartPie2Icon, ClipboardCheckIcon, CheckboxIcon,
+    ZoomCheckIcon, ChartRadarIcon
 } from 'vue-tabler-icons';
 
 export interface menu {
@@ -26,13 +27,17 @@ const sidebarItem: menu[] = [
         icon: LayoutDashboardIcon,
         to: '/'
     },
-    { header: 'SOLAR' },
+    { header: 'FOTOVOLTAICO' },
     {
         title: 'Usinas',
         icon: BoltIcon,
         to: '/usinas/'
     },
-    
+    {
+        title: 'Manutenções',
+        icon: ToolIcon,
+        to: '/manutencoes/'
+    },
     {
         title: 'Check-List',
         icon: ClipboardCheckIcon,
@@ -47,27 +52,8 @@ const sidebarItem: menu[] = [
         to: '/graficos/', 
         // chip: '★',
         // chipColor: 'primary',
-    },
-    {
-        title: 'Manutenções',
-        icon: ToolIcon,
-        to: '/manutencoes/'
-    },
-     
-    { header: 'UNIDADES CONSUMIDORAS' },
-    {
-        title: 'CIP',
-        icon: BulbIcon,                               
-        to: '/iluminacao/', 
-        // chip: '★',
-        // chipColor: 'primary',
-    },
-    {
-        title: 'Prédios Públicos',
-        icon: BuildingIcon,                               
-        to: '/predios/'
-    },
-    
+    }, 
+
     { header: 'GERENCIAMENTO' },
     {
         title: 'Relatórios',
@@ -90,6 +76,36 @@ const sidebarItem: menu[] = [
         chipColor: 'error'
     },
 
+    { header: 'Mercado Livre' },
+    {
+        title: 'Controle',
+        icon: ZoomCheckIcon,                               
+        to: '/controle/', 
+        // chip: '★',
+        // chipColor: 'primary',
+    },
+    {
+        title: 'Consumo',
+        icon: ChartRadarIcon,                               
+        to: '/consumo/', 
+        // chip: '★',
+        // chipColor: 'primary',
+    },
+
+    { header: `UC'S PÚBLICAS` },
+    {
+        title: 'Iluminação',
+        icon: BulbIcon,                               
+        to: '/iluminacao/', 
+        // chip: '★',
+        // chipColor: 'primary',
+    },
+    {
+        title: 'Prédios',
+        icon: BuildingIcon,                               
+        to: '/predios/'
+    },
+
     { header: 'PEEHORTO.COM' },
     {
         title: 'Carregadores',
@@ -103,6 +119,21 @@ const sidebarItem: menu[] = [
         // chip: '★',
         // chipColor: 'primary',
     },
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     // {
     //     title: 'Contas',
     //     icon: RobotIcon,                               
