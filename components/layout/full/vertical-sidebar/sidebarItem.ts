@@ -60,11 +60,11 @@ const sidebarItem: menu[] = [
         icon: FilePowerIcon,
         to: '/relatorios/'
     },
-    {
-        title: 'Conclusivo',
-        icon: CheckboxIcon,
-        to: '/conclusivo/'
-    },
+    // {
+    //     title: 'Conclusivo',
+    //     icon: CheckboxIcon,
+    //     to: '/conclusivo/'
+    // },
     {
         title: 'Lista de Rateio',
         icon: FilesIcon,                               
@@ -79,18 +79,11 @@ const sidebarItem: menu[] = [
     { header: 'Mercado Livre' },
     {
         title: 'Controle',
-        icon: ZoomCheckIcon,                               
+        icon: ChartRadarIcon,                               
         to: '/controle/', 
         // chip: '★',
         // chipColor: 'primary',
-    },
-    {
-        title: 'Consumo',
-        icon: ChartRadarIcon,                               
-        to: '/consumo/', 
-        // chip: '★',
-        // chipColor: 'primary',
-    },
+    }, 
 
     { header: `UC'S PÚBLICAS` },
     {

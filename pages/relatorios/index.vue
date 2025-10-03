@@ -15,6 +15,8 @@ definePageMeta({
 
 import UiParentCard from '@/components/shared/UiParentCard.vue';
 import RelatorioUsina from "~~/components/dashboard/RelatorioUsina.vue";
+import RelatorioConclusivo from "~~/components/relatorios/conclusivo.vue";
+
 
 import { ref } from 'vue';
   const { data: usinas } = await useFetch(`${API_BASE_URL}/usina/`);
@@ -916,7 +918,7 @@ const injecoesUsinas = ref()
                         <thead>
                             <tr>
                               <th class="text-center header-cell2 bg-lightprimary" style="color: black; font-size: 16px; ; border: 0px;" colspan="4">
-                                Página para geração de relatórios estatíscos sobre as usinas e unidades consumidoras.
+                                Página para geração de relatórios estatísticos sobre as usinas e unidades consumidoras.
                               </th>
                             </tr>
                             <tr class="d-flex justify-center">
@@ -927,6 +929,7 @@ const injecoesUsinas = ref()
                                   <!-- <v-chip value="COMPENSA">Compensação (Usina)</v-chip> -->
                                   <v-chip value="COMPENSANOVO">Compensação</v-chip>
                                   <v-chip value="GERAL">Geral</v-chip>
+                                  <v-chip value="CONCLUSIVO">Conclusivo</v-chip>
                                 </v-chip-group>  
                               </td> 
                             </tr>   
@@ -2188,6 +2191,14 @@ const injecoesUsinas = ref()
                         </template>
                       </v-table> 
 
+                    </v-card-text>
+                </v-card>
+
+                <!-- RELATÓRIO CONCLUSIVO -->
+                <v-card elevation="0" v-if="cateSelecionada === 'CONCLUSIVO'">
+                  <!-- TABELA GERAL ANUAL -->
+                    <v-card-text>
+                      <RelatorioConclusivo/>
                     </v-card-text>
                 </v-card>
 
