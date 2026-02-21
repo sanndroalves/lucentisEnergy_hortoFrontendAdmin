@@ -924,6 +924,7 @@ const injecoesUsinas = ref()
                             <tr class="d-flex justify-center">
                               <td class="header-cell2">
                                 <v-chip-group mandatory v-model="cateSelecionada" @click="mudouCategoria(cateSelecionada)" selected-class="text-primary"  class="d-flex justify-center">
+                                  <!-- <v-chip value="STATUS">Status</v-chip> -->
                                   <v-chip value="CONSUMO">Consumo (Unidade)</v-chip>
                                   <v-chip value="INJETADO">Injetado (Usina)</v-chip>
                                   <!-- <v-chip value="COMPENSA">Compensação (Usina)</v-chip> -->

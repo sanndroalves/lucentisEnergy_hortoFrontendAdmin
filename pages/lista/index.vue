@@ -14,255 +14,361 @@
     middleware: 'sidebase-auth'
   })
 
-  // Definindo variáveis reativas
-  const consumoMedio = ref(null);
+
+  //GETs
+  
   const usinas = ref([]);
-  const unidades = ref([]);
-  const unidadesCompensadas = ref([]);
-  const projecaoFiltrada = ref([]);
-  const totalProjetado = ref(0);
-  const somaProjecao = ref("");
-  const calculoPosAutoConsumo = ref(0);
-  const creditoParaInjecao = ref(0); 
+  const unidades = ref([]); 
+  const prediosRateio = ref([]);
+  const iluminacaoRateio = ref([]);
+  const projecaoFiltrada = ref([]); 
+  const porcentagens = ref([]);
 
   const mesAtual = new Date().getMonth() + 1;  
   const anoAtual = mesAtual === 1 ? new Date().getFullYear() -1 : new Date().getFullYear();
+
+  const projecaoJac1 = ref([]);
+
+  const unidadesCompensadas = ref([]);
 
   // Função para buscar dados das usinas e unidades
   const fetchData = async () => {
     const { data: fetchedUsinas } = await useFetch(`${API_BASE_URL}/usina/`);
     const { data: fetchedUnidades } = await useFetch(`${API_BASE_URL}/unidadecompensacao`);
     const { data: fetchedProjecao } = await useFetch(`${API_BASE_URL}/projecaogeracao`);
+    const { data: fetchedPorcentagens } = await useFetch(`${API_BASE_URL}/porcentagem/`);
     
-    usinas.value = fetchedUsinas.value.filter(usina => usina.id !== 19 && usina.id !== 20);
-    unidades.value = fetchedUnidades.value 
-    unidadesCompensadas.value = fetchedUnidades.value.filter(item => item.status == 'L')
-    projecaoFiltrada.value = fetchedProjecao.value.filter(item => item.ano === anoAtual && item.idGeradora !== 19 && item.idGeradora !== 20);
-     
-  };
+    //RETIRANDO O UPA E O HOSPITAL E JAC1 DAS USINAS E PROJEÇÃO
+    usinas.value = fetchedUsinas.value.filter(usina => usina.id !== 19 && usina.id !== 20 && usina.id !== 22);
+    unidades.value = fetchedUnidades.value  
+    projecaoFiltrada.value = fetchedProjecao.value.filter(item => item.ano === anoAtual && item.idGeradora !== 19 && item.idGeradora !== 20 && item.idGeradora !== 22);
+    projecaoJac1.value = fetchedProjecao.value.filter(item => item.ano === anoAtual && item.idGeradora === 22);
+    porcentagens.value = fetchedPorcentagens.value
 
-  // Função para calcular o consumo médio
-  const buscarConsumoMedio = () => {
+    // FILTRANDO UNIDADES (apenas status L)
+    const unidadesAtivas = fetchedUnidades.value.filter(u => u.status === 'L');
+
+    // SEPARANDO POR SECRETARIA
+    prediosRateio.value = unidadesAtivas.filter(u => ['E', 'S', 'O'].includes(u.secretaria));
+    iluminacaoRateio.value = unidadesAtivas.filter(u => ['I', 'P'].includes(u.secretaria));
+
+
+    unidadesCompensadas.value = prediosRateio.value 
+    
+
+  };
+ 
+
+  /* AMBIENTE DE DADOS DAS USINAS sem upa, hospital e jac1 */
+  const consumoMedioUsinas = ref(0);
+  const totalProjetado = ref(0);
+  const somaProjecao = ref("");
+
+  const calculoPosAutoConsumo = ref(0);
+  const creditoParaInjecao = ref(0); 
+
+  const totalProjetadoJac1 = ref(0);
+  const creditoParaInjecaoJac1 = ref(0);
+
+  // CALCULAR CONSUMO MÉDIO DAS USINAS
+  const buscarConsumoMedioUsinas = () => {
     usinas.value.forEach(usina => {
-      const unidadeCorrespondente = unidades.value.filter(unidade => unidade.uc === usina.uc)[0];
-      if (unidadeCorrespondente) {
-        consumoMedio.value += unidadeCorrespondente.mediaConsumo;
+    const unidade = unidades.value.find(u => u.uc == usina.uc); 
+      if (unidade) { 
+        consumoMedioUsinas.value += Number(unidade.mediaConsumo);
       }
     });
 
-    consumoMedio.value = (consumoMedio.value * 12)
+    // Transforma para consumo anual (multiplicando por 12)
+    consumoMedioUsinas.value = parseFloat((consumoMedioUsinas.value * 12).toFixed(2));
+ 
   };
 
-  // Função para somar projeções individuais por ano
-  const somarIndividualProjecao = async (anoId, idGeradoraRemovida) => {
-
-    // Se um idGeradora for removido, filtramos novamente
-    if (idGeradoraRemovida != null) {
-      projecaoFiltrada.value = projecaoFiltrada.value.filter(item => item.idGeradora !== idGeradoraRemovida);
-    }
-
-    const totalPorMes = projecaoFiltrada.value.reduce((acumulador, item) => {
-      const mesAtual = item.mes;
-      acumulador[mesAtual] = parseFloat(((acumulador[mesAtual] || 0) + Number(item.projecao)).toFixed(2));
+  // CALCULAR PROJEÇÃO TOTAL (INDIVIDUAL + GERAL)
+  const calcularProjecaoTotalUsinas = async () => {
+    // 17 usinas e Paço Municipal
+    // Soma individual por mês
+    somaProjecao.value = projecaoFiltrada.value.reduce((acumulador, item) => {
+      const mes = item.mes;
+      acumulador[mes] = parseFloat(((acumulador[mes] || 0) + Number(item.projecao)).toFixed(2));
       return acumulador;
     }, {});
 
-    return totalPorMes;
+    // Soma total geral
+    const valores = Object.values(somaProjecao.value);
+    totalProjetado.value = parseFloat(valores.reduce((total, valor) => total + valor, 0).toFixed(2));
+
+    // Incluindo a projeção do Jac1
+    const somaJac1 = projecaoJac1.value.reduce((total, item) => total + Number(item.projecao), 0);
+    totalProjetadoJac1.value += parseFloat(somaJac1.toFixed(2)); 
   };
- 
 
-  // Função para calcular o total projetado
-  const calcularTotalProjetado = async (idGeradoraRemovida) => {
-    somaProjecao.value = await somarIndividualProjecao(anoAtual, idGeradoraRemovida);
-    const valoresProjetado = Object.values(somaProjecao.value);
-    totalProjetado.value = parseFloat(valoresProjetado.reduce((total, valor) => total + valor, 0).toFixed(2));
-  }; 
-
-  // Função para calcular os valores finais
+  // CALCULO VALORES FINAIS EXPOSTOS
   const calcularValoresFinais = () => {
-    calculoPosAutoConsumo.value = (totalProjetado.value - consumoMedio.value).toFixed(2);
-    creditoParaInjecao.value = ((totalProjetado.value - consumoMedio.value) / 12).toFixed(2);
-  };
+    calculoPosAutoConsumo.value = (totalProjetado.value - consumoMedioUsinas.value).toFixed(2);
+    creditoParaInjecao.value = ((totalProjetado.value - consumoMedioUsinas.value) / 12).toFixed(2);
 
-  //Função para remover usina da lista de rateio
-  const removerUsina = async (id)  =>{
-    consumoMedio.value = 0
-    totalProjetado.value = 0
-    calculoPosAutoConsumo.value = 0
-    creditoParaInjecao.value = 0
-
-    usinas.value = usinas.value.filter(usina => usina.id !== id);
-    buscarConsumoMedio();
-    await calcularTotalProjetado(id);
-    calcularValoresFinais();
-  }
- 
-  // Chamadas no ciclo de vida
-  onMounted(async () => {
-    await fetchData();  // Buscar dados das usinas e unidades
-    buscarConsumoMedio();  // Calcular consumo médio
-    await calcularTotalProjetado(null);  // Calcular total projetado
-    calcularValoresFinais();  // Calcular valores finais
-    calcularMediaConsumo();
-  });
-
-  const unidadesComMediaConsumo = ref([]);
-  const calcularMediaConsumo = async () => { 
-    const { data: relatorios } = await useFetch(`${API_BASE_URL}/relatoriocompensacao`);
-    
-    for (const unidade of unidadesCompensadas.value) {  
-      const relatoriosDaUnidade = relatorios.value.filter(item => item.idUnidadeCompensa === unidade.id);
-
-      if (relatoriosDaUnidade.length > 0) {
-        // Ordenar por ano e mês (mais recente primeiro)
-        const relatoriosOrdenados = relatoriosDaUnidade.sort((a, b) => {
-          if (b.ano === a.ano) {
-            return b.mes - a.mes; // Meses do mesmo ano: mais recente primeiro
-          }
-          return b.ano - a.ano; // Anos diferentes: mais recente primeiro
-        });
-
-        // Selecionar os 6 últimos registros
-        const ultimos6Relatorios = relatoriosOrdenados.slice(0, 6);
-
-        // Calcular a média do consumo
-        const somaConsumo = ultimos6Relatorios.reduce((soma, item) => soma + parseFloat(item.consumokWh || 0), 0);
-        const mediaConsumo = somaConsumo / ultimos6Relatorios.length; 
-        unidade.mediaConsumo = mediaConsumo.toFixed(2);
-
-        // Verificar os últimos 3 relatórios para saldoEnergia
-        const ultimos3Relatorios = relatoriosOrdenados.slice(0, 3); // Pega os últimos 3
-        const saldoEnergiaPreenchido = ultimos3Relatorios.every(item => parseFloat(item.saldoEnergia || 0) !== 0);
-        const saldoEnergiaStatus = saldoEnergiaPreenchido ? "True" : "False";
-
-        // Adicionar unidade com a média calculada e status de saldoEnergia
-        unidadesComMediaConsumo.value.push({
-          uc: unidade.uc,
-          nome: unidade.nome,
-          mediaConsumo: unidade.mediaConsumo,
-          saldoEnergia: saldoEnergiaStatus,
-        });
-      } else {
-        // Caso não haja relatórios, definir mediaConsumo como 0
-        unidade.mediaConsumo = 0;
-
-        // Adicionar unidade com saldoEnergia como "NÃO"
-        unidadesComMediaConsumo.value.push({
-          uc: unidade.uc,
-          nome: unidade.nome,
-          mediaConsumo: unidade.mediaConsumo,
-          saldoEnergia: "False",
-        });
-      }
-    } 
-
-    // Ordenar unidades pela média de consumo, do maior para o menor
-    unidadesComMediaConsumo.value.sort((a, b) => b.mediaConsumo - a.mediaConsumo);
+    creditoParaInjecaoJac1.value = ((totalProjetadoJac1.value / 12).toFixed(2));
   };
   
-//VEFICIAR SE TEM SALDO
-const verificarSaldoEnergia = () => {
-  return unidadesComMediaConsumo.value.some(unidade => unidade.saldoEnergia === "True");
-};
- 
-// CALCULAR LIST DE RATEIO
-const unidadesListaDeRateio = ref([]);
+  // Função para inicializar os dados ao montar o componente 
+  onMounted(async () => {
+    await fetchData();  // Buscar dados das usinas e unidades
+    buscarConsumoMedioUsinas();  // Calcular consumo médio
+    await calcularProjecaoTotalUsinas();  // Calcular total projetado
+    calcularValoresFinais();  // Calcular valores finais 
+    await calcularMediaConsumo();  // Calcular média de consumo para unidades
+    somarMediaConsumoGrupos();  // Somar médias de consumo por grupo
+  });
 
-const calcularRateio = (creditoParaInjecao) => {
-  let creditoRestante = creditoParaInjecao;
 
-  unidadesListaDeRateio.value = unidadesComMediaConsumo.value
-    .filter(unidade => unidade.mediaConsumo >= 200) // Apenas prédios com consumo médio acima de 200 kWh
-    .map(unidade => {
+  /* AMBIENTE DAS UNIDADES GERAIS */ 
+  const unidadesComMediaConsumoPredios = ref([]);
+  const unidadesComMediaConsumoIluminacao = ref([]);
+
+  // CALCULAR MÉDIA DE CONSUMO (para prédios e iluminação separadamente)
+  const calcularMediaConsumo = async () => { 
+    const { data: relatorios } = await useFetch(`${API_BASE_URL}/relatoriocompensacao`);
+
+    // Função auxiliar para calcular a média de uma lista específica
+    const calcularParaGrupo = (unidadesGrupo, destino) => {
+      destino.value = []; // zera antes de recalcular
+
+      for (const unidade of unidadesGrupo) {  
+        const relatoriosDaUnidade = relatorios.value.filter(item => item.idUnidadeCompensa === unidade.id);
+
+        if (relatoriosDaUnidade.length > 0) {
+          // Ordenar relatórios (mais recentes primeiro)
+          const relatoriosOrdenados = relatoriosDaUnidade.sort((a, b) => {
+            if (b.ano === a.ano) return b.mes - a.mes;
+            return b.ano - a.ano;
+          });
+
+          // Últimos 6 relatórios → média de consumo
+          const ultimos6 = relatoriosOrdenados.slice(0, 6);
+          const somaConsumo = ultimos6.reduce((soma, item) => soma + parseFloat(item.consumokWh || 0), 0);
+          const mediaConsumo = somaConsumo / ultimos6.length; 
+          unidade.mediaConsumo = parseFloat(mediaConsumo.toFixed(2));
+
+          // Últimos 3 relatórios → verificar saldoEnergia
+          const ultimos3 = relatoriosOrdenados.slice(0, 3);
+          const saldoEnergiaPreenchido = ultimos3.every(item => parseFloat(item.saldoEnergia || 0) !== 0);
+          const saldoEnergiaStatus = saldoEnergiaPreenchido ? "True" : "False";
+
+          // Adiciona ao grupo
+          destino.value.push({
+            uc: unidade.uc,
+            nome: unidade.nome,
+            mediaConsumo: unidade.mediaConsumo,
+            saldoEnergia: saldoEnergiaStatus,
+          });
+        } else {
+          unidade.mediaConsumo = 0;
+          destino.value.push({
+            uc: unidade.uc,
+            nome: unidade.nome,
+            mediaConsumo: 0,
+            saldoEnergia: "False",
+          });
+        }
+      }
+
+      // Ordenar por consumo (maior → menor)
+      destino.value.sort((a, b) => b.mediaConsumo - a.mediaConsumo);
+    };
+
+    // Rodar o cálculo para cada grupo
+    calcularParaGrupo(prediosRateio.value, unidadesComMediaConsumoPredios);
+    calcularParaGrupo(iluminacaoRateio.value, unidadesComMediaConsumoIluminacao);
+  };
+
+  // CALCULAR MÉDIA DE CONSUMO POR GRUPO
+  const somaPredios = ref(0);
+  const somaIluminacao = ref(0);
+
+  const somarMediaConsumoGrupos = () => {
+    somaPredios.value = unidadesComMediaConsumoPredios.value.reduce(
+      (total, item) => total + parseFloat(item.mediaConsumo || 0),
+      0
+    );
+
+    somaIluminacao.value = unidadesComMediaConsumoIluminacao.value.reduce(
+      (total, item) => total + parseFloat(item.mediaConsumo || 0),
+      0
+    );
+
+    somaPredios.value = parseFloat(somaPredios.value.toFixed(2));
+    somaIluminacao.value = parseFloat(somaIluminacao.value.toFixed(2));
+  };
+
+  /* CALCULOS PARA RATEIO */
+  // ARRAYS DE RESULTADO
+  const unidadesRateioPredios = ref([]);
+  const unidadesRateioIluminacao = ref([]);
+  const unidadesRateioRestantes = ref([]);
+
+  // Função genérica de rateio (reutilizável)
+  const calcularRateioGrupo = (
+    unidades,
+    creditoDisponivel,
+    creditoBasePercentual = null
+  ) => {
+    let creditoRestante = creditoDisponivel;
+
+    // Se não passar base percentual, usa o próprio crédito
+    const basePercentual = creditoBasePercentual ?? creditoDisponivel;
+
+    const unidadesValidas = unidades
+      .filter(u => u.mediaConsumo > 200)
+      .sort((a, b) => b.mediaConsumo - a.mediaConsumo);
+
+    const resultado = [];
+    const naoContempladas = [];
+
+    for (const unidade of unidadesValidas) {
       let injetar = 0;
 
-      if (unidade.mediaConsumo > 2000) {
-        injetar = unidade.mediaConsumo - 1000;
-      } else if (unidade.mediaConsumo > 1300) {
-        injetar = 1200;
-      } else if (unidade.mediaConsumo > 1000) {
-        injetar = 1000;
-      } else if (unidade.mediaConsumo > 700) {
-        injetar = 500;
-      } else if (unidade.mediaConsumo > 400) {
-        injetar = 300;
-      } else if (unidade.mediaConsumo > 300) {
-        injetar = 200;
-      } else if (unidade.mediaConsumo > 200) {
-        injetar = 100;
+      if (creditoRestante >= unidade.mediaConsumo) {
+        injetar = unidade.mediaConsumo;
+        creditoRestante -= injetar;
+      } else if (creditoRestante > 0) {
+        injetar = creditoRestante;
+        creditoRestante = 0;
       }
 
-      if (injetar > creditoRestante) {
-        injetar = creditoRestante; // Limita a injeção ao crédito restante
+      if (injetar > 0) {
+        const porcentagemInjetada = (
+          (injetar / basePercentual) * 100
+        ).toFixed(2);
+
+        resultado.push({
+          uc: unidade.uc,
+          nome: unidade.nome,
+          mediaConsumo: parseFloat(unidade.mediaConsumo),
+          injetado: parseFloat(injetar.toFixed(2)),
+          "%": porcentagemInjetada,
+          creditoRestante: parseFloat(creditoRestante.toFixed(2)),
+        });
       }
 
-      const porcentagemInjetada = ((injetar / creditoParaInjecao) * 100).toFixed(2); // Porcentagem do total de crédito
+      if (injetar === 0) {
+        naoContempladas.push(unidade);
+      }
+    }
 
-      creditoRestante -= injetar; // Subtrai o valor injetado do crédito restante
+    return { resultado, naoContempladas };
+  };
 
-      return {
-        uc: unidade.uc,
-        nome: unidade.nome,
-        mediaConsumo: unidade.mediaConsumo,
-        injetado: injetar,
-        porcentagemInjetada,
-        creditoRestante: creditoRestante.toFixed(2),
-      };
-    })
-    .filter(unidade => unidade.injetado > 0); // Apenas unidades que receberam injeção
+  // Função 1 → Rateio principal dos prédios
+  const calcularRateioPredios = (creditoParaInjecao) => {
+    const { resultado, naoContempladas } = calcularRateioGrupo(
+      unidadesComMediaConsumoPredios.value,
+      creditoParaInjecao
+    );
+
+    unidadesRateioPredios.value = resultado;
+    return naoContempladas;
+  };
+
+  // Função 2 → Rateio da iluminação (50% do Jac1)
+  const calcularRateioIluminacao = (creditoParaInjecaoJac1) => {
+    const { resultado } = calcularRateioGrupo(
+      unidadesComMediaConsumoIluminacao.value,
+      creditoParaInjecaoJac1 * 0.5,
+      creditoParaInjecaoJac1
+    );
+
+    unidadesRateioIluminacao.value = resultado;
+  };
+
+  // Função 3 → Rateio dos prédios restantes (50% do Jac1)
+  const calcularRateioRestantes = (arrayRestantes, creditoParaInjecaoJac1) => {
+    const { resultado } = calcularRateioGrupo(
+      arrayRestantes,
+      creditoParaInjecaoJac1 * 0.5,
+      creditoParaInjecaoJac1
+    );
+
+    unidadesRateioRestantes.value = resultado;
+  };
+
+  // Controle de exibição dos botões
+  const mostrarBotaoCalcular = computed(() => somaPredios.value !== 0);
+  const mostrarBotaoDownload = ref(false);
+
+  // Função principal para coordenar tudo
+  const calcularRateios = (creditoParaInjecao, creditoParaInjecaoJac1) => {
+    const arrayRestantes = calcularRateioPredios(creditoParaInjecao); 
+    calcularRateioIluminacao(creditoParaInjecaoJac1);
+    calcularRateioRestantes(arrayRestantes, creditoParaInjecaoJac1);
+
+    mostrarBotaoCalcular.value = false;
+    mostrarBotaoDownload.value = true;
+  };
+
+  
+  // Unindo os arrays de rateio para exibição final
+  const unidadesListaDeRateioJac1 = ref([]);
+
+  const executarCalculoRateios = () => {
+    calcularRateios(creditoParaInjecao.value, creditoParaInjecaoJac1.value);
  
-};
- 
+      unidadesListaDeRateioJac1.value = [
+      ...unidadesRateioIluminacao.value,
+      ...unidadesRateioRestantes.value
+    ];
+  };
 
-import * as XLSX from "xlsx";
+  /* SISTEMA DE DOWNLOAD */
+  import * as XLSX from "xlsx";
 
-// Função para exportar a lista de rateio para Excel
-// const exportarParaExcel = () => {
-//   if (unidadesListaDeRateio.value.length === 0) {
-//     console.warn("Nenhum dado disponível para exportar.");
-//     return;
-//   }
+  // Função para baixar cada planilha
+  const baixarPlanilhas = () => {
+    const exportarXLSX = (dados, nomeArquivo) => {
+      const ws = XLSX.utils.json_to_sheet(dados);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Rateio");
+      XLSX.writeFile(wb, `${nomeArquivo}.xlsx`);
+    };
 
-//   // Preparar os dados para a planilha
-//   const dados = unidadesListaDeRateio.value.map(unidade => ({
-//     UC: unidade.uc,
-//     Nome: unidade.nome,
-//     "Consumo Médio (kWh)": unidade.mediaConsumo,
-//     "Energia Injetada (kWh)": unidade.injetado,
-//     "Porcentagem Injetada (%)": unidade.porcentagemInjetada,
-//     "Crédito Restante (kWh)": unidade.creditoRestante,
-//   }));
+    exportarXLSX(unidadesListaDeRateioJac1.value, "Rateio_Iluminacao_Restantes");
+    exportarXLSX(unidadesRateioPredios.value, "Rateio_Predios");
+  };
 
-//   // Criar uma nova planilha
-//   const worksheet = XLSX.utils.json_to_sheet(dados);
-//   const workbook = XLSX.utils.book_new();
-//   XLSX.utils.book_append_sheet(workbook, worksheet, "Rateio");
+  /* ATUALIZANDO PORCENTAGENS NO SISTEMA PEEHORTO */
 
-//   // Salvar o arquivo como Excel
-//   XLSX.writeFile(workbook, "Rateio.xlsx");
-// };
-const exportarParaExcel = () => {
-  if (unidadesListaDeRateio.value.length === 0) {
-    console.warn("Nenhum dado disponível para exportar.");
-    return;
-  }
+  const progresso = ref(0);          // % de progresso
+  const carregando = ref(false);     // controla a barra
+  const totalRegistros = ref(0);
 
-  // Preparar os dados para a planilha
-  const dados = unidadesComMediaConsumo.value.map(unidade => ({
-    UC: unidade.uc,
-    Nome: unidade.nome,
-    "Consumo Médio (kWh)": unidade.mediaConsumo, 
-    "Saldo": unidade.saldoEnergia
-  }));
+  const atualizarDataFimNaAPI = async (dados) => {
+    const hoje = new Date();
+    const dataFim = new Date(hoje);
+    dataFim.setMonth(dataFim.getMonth() + 1);
+    const dataFimFormatada = dataFim.toISOString().split("T")[0];
 
-  // Criar uma nova planilha
-  const worksheet = XLSX.utils.json_to_sheet(dados);
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Rateio");
+    carregando.value = true;
+    totalRegistros.value = dados.length;
+    progresso.value = 0;
 
-  // Salvar o arquivo como Excel
-  XLSX.writeFile(workbook, "Rateio.xlsx");
-};
+    for (let i = 0; i < dados.length; i++) {
+      const item = dados[i];
+      const payload = { ...item, data_fim: dataFimFormatada };
+
+      await useFetch(`${API_BASE_URL}/porcentagem/${item.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+        headers: { "Content-Type": "application/json" },
+      });
+
+      // Atualiza progresso
+      progresso.value = Math.round(((i + 1) / dados.length) * 100);
+    }
+
+    carregando.value = false;
+    console.log("Todos os registros foram atualizados.");
+  };
+  
 </script>
 
 <template>
@@ -283,7 +389,7 @@ const exportarParaExcel = () => {
                 <li class="v-breadcrumbs-item" text="Dashboard">
                   <a class="v-breadcrumbs-item--link" href="/" style="text-decoration:none"
                     ><h6 class="text-medium-emphasis text-subtitle-1">
-                      Unidades
+                      Gerenciamento
                     </h6></a
                   >
                 </li>
@@ -316,72 +422,138 @@ const exportarParaExcel = () => {
             <UiParentCard title="Configurações e Dados de Rateio"> 
                 <div class="pa-7 pt-1"> 
 
-                  <!-- LISTA DE USINAS PARA RATEIO -->
-                  <v-row class="mb-10">
-                    <v-expansion-panels> 
-                      <v-expansion-panel>
-                        <v-expansion-panel-title class="text-center">
-                          <div class="d-flex flex-column align-items-start">
-                            <div class="d-flex align-items-center">
-                              <v-avatar class="bg-lightsuccess text-success" size="40">
-                                <BoltIcon size="30" />
-                              </v-avatar>
-                              <b style="font-size: 18px; margin: 10px;">Usinas para Rateio</b>  
-                            </div> 
+                  <!-- CARDS PREDIO E IP PARA RATEIO -->
+                  <v-row>
+                    <div class="v-col v-col-12">
+                      <div class="v-row">
+                        <div class="v-col-sm-6 v-col-md-6 v-col-lg-6 v-col-12">
+                          <div
+                            class="text-decoration-none d-flex align-center justify-center text-center rounded-md pa-6 bg-lightprimary"
+                          >
+                            <div class="bg-lightprimary">
+                              <BoltIcon size="30" class="text-primary" />
+                              <div
+                                class="text-subtitle-1 text-capitalize font-weight-bold mt-3 text-primary"
+                              >
+                                Prédios<br>para Rateio
+                              </div>
+                              <h4 class="text-h4 mt-1 text-primary">{{ prediosRateio.length }}</h4>
+                            </div>
                           </div>
-                        </v-expansion-panel-title>
-                        
+                        </div>
 
-                        <v-expansion-panel-text>
-                          <v-chip v-for="usina in usinas" :key="usina.uc" class="ma-1"> 
-                              {{ usina.uc + '-' + usina.nome }}
-                              <v-btn @click="removerUsina(usina.id)" size="20" icon class="bg-error ml-2">
-                                <v-avatar size="20" class="text-white">
-                                  <XIcon size="15" />
-                                </v-avatar>
-                                <v-tooltip activator="parent" location="bottom">Remover Geradora</v-tooltip>
-                              </v-btn> 
-                          </v-chip>
-                        </v-expansion-panel-text>
-                      </v-expansion-panel>
-                    </v-expansion-panels>
-
+                        <div class="v-col-sm-6 v-col-md-6 v-col-lg-6 v-col-12">
+                          <div
+                            class="text-decoration-none d-flex align-center justify-center text-center rounded-md pa-6 bg-lightwarning"
+                          >
+                            <div class="bg-lightwarning">
+                              <BuildingStoreIcon size="30" class="text-warning" />
+                              <div
+                                class="text-subtitle-1 text-capitalize font-weight-bold mt-3 text-warning"
+                              >
+                                IP<br>para Rateio
+                              </div>
+                              <h4 class="text-h4 mt-1 text-warning">
+                                {{ iluminacaoRateio.length }}
+                              </h4>
+                            </div>
+                          </div>
+                        </div> 
+                      </div>
+                    </div>   
                   </v-row>
-                  
-                  <!-- VALORES PARA RATEIO TABELA -->
+
+                  <h3 class="mt-4 mb-4 text-center"><code>Dados</code>- Consumo Unidades</h3>
+                  <!-- VALORES PARA CONSUMO TABELA -->
                   <v-row justify="space-around" >
-                      <v-table>
-                        <thead>
-                            <tr> 
-                              <th class="header-cell text-center" style="font-size: 17px; padding: 20px;">Consumo Usinas <br><span style="font-size: 12px;">kWh/Ano</span></th>
-                              <th class="header-cell text-center" style="font-size: 17px; padding: 20px;">Geração Usinas <br><span style="font-size: 12px;">kWh/Ano</span></th> 
-                              <th class="header-cell text-center" style="font-size: 17px; padding: 20px;">Pós AutoConsumo <br><span style="font-size: 12px;">kWh/Ano</span></th> 
-                              <th class="header-cell text-center" style="font-size: 17px; padding: 20px;">Créditos Para Injeção<br><span style="font-size: 12px;">kWh/Mensal</span></th> 
-                            </tr>
-                            <tr>
-                              <td class="text-center" style="border: 1px solid #4d7fff">{{ consumoMedio  }}</td>
-                              <td class="text-center" style="border: 1px solid #4d7fff">{{ totalProjetado }}</td>
-                              <td class="text-center" style="border: 1px solid #4d7fff">{{ calculoPosAutoConsumo }}</td>
-                              <td class="text-center" style="border: 1px solid #4d7fff">{{ creditoParaInjecao }}</td>
-                            </tr>
-                          </thead>
-                      </v-table>
-                    </v-row>  
-                    <v-row class="mt-10" justify="space-around">
-                    <div>
-                      <b>Unidades com Saldo:</b> 
-                      <span v-if="!verificarSaldoEnergia()" class="ml-5" style="color: red;"><b>NÃO HÁ UNIDADES COM SALDO</b></span>
-                      <span v-else class="ml-5" style="color: green;"><b>UNIDADES COM SALDO</b></span>
+                    <v-table>
+                      <thead>
+                          <tr> 
+                            <th class="header-cell text-center" style="font-size: 17px; padding: 20px;">Consumo Prédios <br><span style="font-size: 12px;">kWh/Mensal</span></th> 
+                            <th class="header-cell text-center" style="font-size: 17px; padding: 20px;">Consumo Iluminação<br><span style="font-size: 12px;">kWh/Mensal</span></th> 
+                          </tr>
+                          <tr> 
+                            <td class="text-center" style="border: 1px solid #4d7fff">{{ somaPredios }}</td> 
+                            <td class="text-center" style="border: 1px solid #4d7fff">{{ somaIluminacao }}</td> 
+                          </tr>
+                        </thead>
+                    </v-table>
+                  </v-row>
+
+                  <br>
+                  <h3 class="mt-4 mb-4 text-center"><code>Dados</code>- 17 usinas + Paço Municipal</h3>
+                  <!-- VALORES PARA RATEIO TABELA prédios -->
+                  <v-row justify="space-around" >
+                    <v-table>
+                      <thead>
+                          <tr> 
+                            <th class="header-cell text-center" style="font-size: 17px; padding: 20px;">Consumo Usinas <br><span style="font-size: 12px;">kWh/Ano</span></th>
+                            <th class="header-cell text-center" style="font-size: 17px; padding: 20px;">Geração Usinas <br><span style="font-size: 12px;">kWh/Ano</span></th> 
+                            <th class="header-cell text-center" style="font-size: 17px; padding: 20px;">Pós AutoConsumo <br><span style="font-size: 12px;">kWh/Ano</span></th> 
+                            <th class="header-cell text-center" style="font-size: 17px; padding: 20px;">Créditos Para Injeção<br><span style="font-size: 12px;">kWh/Mensal</span></th> 
+                          </tr>
+                          <tr>
+                            <td class="text-center" style="border: 1px solid #4d7fff">{{ consumoMedioUsinas }}</td>
+                            <td class="text-center" style="border: 1px solid #4d7fff">{{ totalProjetado }}</td>
+                            <td class="text-center" style="border: 1px solid #4d7fff">{{ calculoPosAutoConsumo }}</td>
+                            <td class="text-center" style="border: 1px solid #4d7fff">{{ creditoParaInjecao }}</td>
+                          </tr>
+                        </thead>
+                    </v-table>
+                  </v-row>
+
+                  <br>
+                  <h3 class="mt-4 mb-4 text-center"><code>Dados</code>- Centro de Eventos JAC1</h3>
+                  <!-- VALORES PARA RATEIO TABELA iluminação -->
+                  <v-row justify="space-around" >
+                    <v-table>
+                      <thead>
+                          <tr> 
+                            <th class="header-cell text-center" style="font-size: 17px; padding: 20px;">Geração Usina <br><span style="font-size: 12px;">kWh/Ano</span></th> 
+                            <th class="header-cell text-center" style="font-size: 17px; padding: 20px;">Créditos Para Injeção Total<br><span style="font-size: 12px;">kWh/Mensal</span></th> 
+                            <th class="header-cell text-center" style="font-size: 17px; padding: 20px;">Créditos Para Injeção 50%<br><span style="font-size: 12px;">kWh/Mensal</span></th> 
+                          </tr>
+                          <tr> 
+                            <td class="text-center" style="border: 1px solid #4d7fff">{{ totalProjetadoJac1 }}</td> 
+                            <td class="text-center" style="border: 1px solid #4d7fff">{{ creditoParaInjecaoJac1}}</td>
+                            <td class="text-center" style="border: 1px solid #4d7fff">{{ creditoParaInjecaoJac1 / 2 }}</td>
+                          </tr>
+                        </thead>
+                    </v-table>
+                  </v-row>
+                  <br> 
+
+                  <!-- BOTÃO PARA CALCULAR RATEIOS -->
+                  <v-row class="mt-10" justify="space-around">
+                    <v-btn v-if="mostrarBotaoCalcular" class="bg-primary text-white" color="primary" @click="executarCalculoRateios">
+                      Calcular Rateios
+                    </v-btn>
+
+                    <v-btn v-if="mostrarBotaoDownload" color="success" @click="baixarPlanilhas"> 
+                      Baixar Arquivos XLSX
+                    </v-btn> 
+                  </v-row>
+
+                  <!-- BOTÃO PARA ATUALIZAR DATA FIM 
+                  <v-row class="mt-10" justify="space-around">
+                    <div v-if="carregando">
+                      <p>Atualizando registros... {{ progresso }}%</p>
+                      <v-progress-linear :value="progresso" height="20" color="primary" striped>
+                      </v-progress-linear>
                     </div>
-                    </v-row>
-                    <v-row class="mt-10" justify="space-around">
-                      <v-btn v-if="verificarSaldoEnergia()"  @click="calcularRateio(creditoParaInjecao);" class="bg-success text-white">
-                        Calcular Lista
-                      </v-btn>
-                      <v-btn v-if="verificarSaldoEnergia() && unidadesListaDeRateio.length > 0" @click="exportarParaExcel()" class="bg-primary text-white">
-                        Exportar para Excel
-                      </v-btn>
-                    </v-row>
+
+                    <v-btn
+                      v-else-if="mostrarBotaoDownload"
+                      color="primary"
+                      @click="atualizarDataFimNaAPI(porcentagens)"
+                    >
+                      Atualizar Data Fim
+                    </v-btn>  
+                  </v-row>-->
+                  
+                    
+                    
+                  
                 </div>  
                 <br>
                 

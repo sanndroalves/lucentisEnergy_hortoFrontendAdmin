@@ -70,22 +70,13 @@ const sidebarItem: menu[] = [
         icon: FilesIcon,                               
         to: '/lista/', 
         // chip: '★',
-        // chipColor: 'primary',
-        disabled: true, 
-        chip: '[MANUT]',
-        chipColor: 'error'
+        chipColor: 'primary',
+        // disabled: true, 
+        // chip: '[MANUT]',
+        // chipColor: 'error'
     },
 
-    { header: 'Mercado Livre' },
-    {
-        title: 'Controle',
-        icon: ChartRadarIcon,                               
-        to: '/controle/', 
-        // chip: '★',
-        // chipColor: 'primary',
-    }, 
-
-    { header: `UC'S PÚBLICAS` },
+    { header: `UC PÚBLICAS` },
     {
         title: 'Iluminação',
         icon: BulbIcon,                               
@@ -98,6 +89,15 @@ const sidebarItem: menu[] = [
         icon: BuildingIcon,                               
         to: '/predios/'
     },
+
+    // { header: 'Mercado Livre' },
+    // {
+    //     title: 'Controle',
+    //     icon: ChartRadarIcon,                               
+    //     to: '/controle/', 
+    //     // chip: '★',
+    //     // chipColor: 'primary',
+    // }, 
 
     { header: 'PEEHORTO.COM' },
     {

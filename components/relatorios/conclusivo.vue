@@ -237,7 +237,7 @@ const extrairEExportar6meses = async (tipo) => {
         return b.ano - a.ano;
       });
 
-      const ultimos6Relatorios = relatoriosOrdenados.slice(0, 8); 
+      const ultimos6Relatorios = relatoriosOrdenados.slice(0, 13); 
       const linha = {
         UC: unidade.uc,
         Nome: unidade.nome,
