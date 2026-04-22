@@ -32,7 +32,7 @@ export default defineNuxtConfig({
   ],
 
   auth: {
-    baseURL: 'https://api.peehorto.com/api/auth',//endereço do backend
+    baseURL: 'https://api.lucentis.com.br/api/auth',//endereço do backend
     provider: {
       type: 'local',//biblioteca sidebase no modo local (webToken)
       endpoints: {

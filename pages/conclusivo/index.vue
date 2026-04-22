@@ -1204,7 +1204,7 @@ const extrairEExportar6meses = async (tipo) => {
       <v-card-text ref="tabelaElement" id="OSPDF">
         <v-row>
           <v-col cols="2" class="text-right">
-            <img src="/images/logo_horto.png" alt="" width="70">
+            <img src="/images/logo_lucentis.png" alt="" width="70">
           </v-col>
           <v-col cols="8" class="text-center"> 
             <h5>Sistema de Monitoramento Energético</h5>
@@ -1428,7 +1428,7 @@ const extrairEExportar6meses = async (tipo) => {
       <!-- Logos e título central -->
       <v-row align="center">
         <v-col cols="2" class="text-left">
-          <img src="/images/logo_horto.png" alt="" width="80">
+          <img src="/images/logo_lucentis.png" alt="" width="80">
         </v-col>
         <v-col cols="8" class="text-center">
           <h2 class="font-weight-bold mb-0">Sistema de Monitoramento Energético</h2>

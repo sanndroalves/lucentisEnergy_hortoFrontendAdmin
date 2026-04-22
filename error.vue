@@ -6,7 +6,7 @@ useHead({
   titleTemplate: (titleChunk) => {
     return titleChunk
       ? `${titleChunk} - 404-Page Not Found`
-      : "Erro 404 - HortoSolar";
+      : "Erro 404 - Lucentis";
   },
 });
 </script>

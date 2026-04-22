@@ -1508,7 +1508,7 @@ definePageMeta({
         <v-card-text ref="tabelaElement" id="OSPDF">
             <v-row>
                 <v-col cols="2" class="text-right">
-                    <img src="/images/logo_horto.png" alt="" width="70"> 
+                    <img src="/images/logo_lucentis.png" alt="" width="70"> 
                 </v-col> 
                 <v-col cols="7" class="text-center">
                     
@@ -1660,7 +1660,7 @@ definePageMeta({
         <v-card-text ref="tabelaElement" id="OSPDF">
             <v-row>
                 <v-col cols="2" class="text-right">
-                    <img src="/images/logo_horto.png" alt="" width="70"> 
+                    <img src="/images/logo_lucentis.png" alt="" width="70"> 
                 </v-col> 
                 <v-col cols="7" class="text-center">
                     
