@@ -18,7 +18,7 @@ const secondary = ref('rgb(var(--v-theme-secondary))');
 <template>
     <div class="logo text-center mt-3">
         <NuxtLink to="/">
-            <img src="https://i.imgur.com/byPtfbk.png" height="60">
+            <img src="https://i.imgur.com/gHxwN0V.png" height="100">
         </NuxtLink>
     </div>
 </template>

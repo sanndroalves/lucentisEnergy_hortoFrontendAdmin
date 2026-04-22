@@ -1,22 +1,21 @@
 <script setup >
 import { RouterView } from 'vue-router';
 import { API_BASE_URL } from '~/base/link';
-const title = ref("Carregar • PEE Horto");
+const title = ref("Carregar • Lucentis");
 
 useHead({
   meta: [{ content: title }],
   titleTemplate: (titleChunk) => {
     return titleChunk
-      ? `${titleChunk} • PEE Horto`
-      : "Gerencia • PEE Horto";
+      ? `${titleChunk} • Lucentis`
+      : "Gerencia • Lucentis";
   },
 });
 
 const { data } = useAuth() 
 const idUsuario = ref(data.value.id)
 
-const { data: usuarioInfo } = await useFetch(`${API_BASE_URL}/usuarios/${idUsuario.value}`); 
-console.log("CARGO: ", usuarioInfo.value.cargo)
+const { data: usuarioInfo } = await useFetch(`${API_BASE_URL}/usuarios/${idUsuario.value}`);  
 </script>
 
 <template>

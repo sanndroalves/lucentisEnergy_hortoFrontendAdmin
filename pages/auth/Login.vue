@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /*-For Set Blank Layout-*/
 useHead ({
-  title: 'Login • PEE Horto'
+  title: 'Login • Lucentis'
 });
 
 definePageMeta({
