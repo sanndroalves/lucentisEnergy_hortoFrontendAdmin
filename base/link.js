@@ -1,1 +1,1 @@
-export const API_BASE_URL = 'https://api.peehorto.com';
+export const API_BASE_URL = 'https://api.lucentis.com.br';
