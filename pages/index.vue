@@ -239,7 +239,7 @@ onMounted(() => {
           
           
           <div class="mb-6">
-            <SolarMan />
+            <!-- <SolarMan /> -->
           </div> 
           <!-- <div class="mb-15">
             <VerificarStrings />
