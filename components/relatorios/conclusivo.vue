@@ -591,6 +591,11 @@ const extrairEExportar6meses = async (tipo) => {
 
     const taxaAutossuficiencia = (totalCompensado / totalConsumo) * 100
 
+    console.log("CONSUMO MEDIO USINAS: ", consumoMedioUsinas)
+    console.log("CONSUMO MEDIO UNIDADES: ", consumoMedioUnidadesPredios)
+
+    console.log("TOTAL COMPENSADO: ", energia_compensadaPredios)
+    console.log("TOTAL CONSUMO: ", totalConsumo)
 
     return Number(taxaAutossuficiencia.toFixed(2))
 
@@ -1263,7 +1268,7 @@ const extrairEExportar6meses = async (tipo) => {
           <h4 class="mt-1">Período: {{ periodo_mes }}/{{ periodo_ano }}</h4>
         </v-col>
         <v-col cols="2" class="text-right">
-          <img src="/images/logo_peehorto.png" alt="" width="150">
+          <img src="/images/logo_lucentis.png" alt="" width="150">
         </v-col>
       </v-row>
 

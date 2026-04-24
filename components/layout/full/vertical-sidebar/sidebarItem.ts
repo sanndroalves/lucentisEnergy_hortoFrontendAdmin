@@ -99,19 +99,19 @@ const sidebarItem: menu[] = [
     //     // chipColor: 'primary',
     // }, 
 
-    { header: 'PEEHORTO.COM' },
-    {
-        title: 'Carregadores',
-        icon: PlugIcon,
-        to: '/carregadores/'
-    },
-    {
-        title: 'Análises',
-        icon: ChartArrowsVerticalIcon,
-        to: '/analises/', 
-        // chip: '★',
-        // chipColor: 'primary',
-    },
+    // { header: 'PEEHORTO.COM' },
+    // {
+    //     title: 'Carregadores',
+    //     icon: PlugIcon,
+    //     to: '/carregadores/'
+    // },
+    // {
+    //     title: 'Análises',
+    //     icon: ChartArrowsVerticalIcon,
+    //     to: '/analises/', 
+    //     // chip: '★',
+    //     // chipColor: 'primary',
+    // },
 
 
 

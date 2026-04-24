@@ -10,46 +10,121 @@ const map = shallowRef(null);
 const dialogUsina = ref(false);
 const usinaSelecionada = ref(null);
 
+const loadingMes = ref(false);
+const modoVisualizacao = ref('geral');
+
+
 const { data: usinas } = await useFetch(`${API_BASE_URL}/usina/`);
 const { data: imagens } = await useFetch(`${API_BASE_URL}/imagens/`);
 const { data: geracoes } = await useFetch(`${API_BASE_URL}/relatoriogeracao/`);
 const { data: injecoes } = await useFetch(`${API_BASE_URL}/relatoriousina/`);
 
-const imagensSelecionada = ref()
-const apiKey = ref("AIzaSyA5BEipnfIyp7WAtvZq6u21oR8oKx1Sa9Q");
-
 const alterarColor = (secretaria) => {
   const colorMap = {
-    E: "#5D87FF",
+    E: "#2dccfc",
     S: "#13DEB9",
     O: "#FFAE1F",
   };
   return colorMap[secretaria] || "#5D87FF";
 };
 
-const totalGerado = ref(0)
-const totalInjetado = ref(0)
-const totalCompensado = ref(0)
+const imagensSelecionada = ref()
+const apiKey = ref("AIzaSyA5BEipnfIyp7WAtvZq6u21oR8oKx1Sa9Q");
 
+const totalGerado = ref(0);
+const totalInjetado = ref(0);
+
+const dataSelecionada = ref(new Date());
+
+const mesAtual = computed(() => dataSelecionada.value.getMonth() + 1);
+const anoAtual = computed(() => dataSelecionada.value.getFullYear());
+
+const mesAnoLabel = computed(() =>
+  dataSelecionada.value.toLocaleDateString('pt-BR', {
+    month: 'long',
+    year: 'numeric'
+  })
+);
+
+const proximoMes = () => {
+  loadingMes.value = true;
+  setTimeout(() => {
+    const d = new Date(dataSelecionada.value);
+    d.setMonth(d.getMonth() + 1);
+    dataSelecionada.value = d;
+    loadingMes.value = false;
+  }, 300);
+};
+
+const mesAnterior = () => {
+  loadingMes.value = true;
+  setTimeout(() => {
+    const d = new Date(dataSelecionada.value);
+    d.setMonth(d.getMonth() - 1);
+    dataSelecionada.value = d;
+    loadingMes.value = false;
+  }, 300);
+};
+
+// 🔥 TOTAL GERAL
+const calcularTotais = (id) => {
+  const g = geracoes.value.filter(i => i.idGeradora === id);
+  const inj = injecoes.value.filter(i => i.idGeradora === id);
+
+  totalGerado.value = g.reduce((a, i) => a + Number(i.geracao), 0);
+  totalInjetado.value = inj.reduce((a, i) => a + Number(i.injetadoFPonta), 0);
+};
+
+// 🔥 MENSAL
+const totalGeradoMes = computed(() => {
+  if (!usinaSelecionada.value) return 0;
+
+  return geracoes.value
+    ?.filter(i =>
+      i.idGeradora === usinaSelecionada.value.id &&
+      i.mes === mesAtual.value &&
+      i.ano === anoAtual.value
+    )
+    .reduce((a, i) => a + Number(i.geracao), 0) || 0;
+});
+
+const totalInjetadoMes = computed(() => {
+  if (!usinaSelecionada.value) return 0;
+
+  return injecoes.value
+    ?.filter(i =>
+      i.idGeradora === usinaSelecionada.value.id &&
+      i.mes === mesAtual.value &&
+      i.ano === anoAtual.value
+    )
+    .reduce((a, i) => a + Number(i.injetadoFPonta), 0) || 0;
+});
+
+// 🔄 DISPLAY
+const geradoExibido = computed(() =>
+  modoVisualizacao.value === 'geral'
+    ? totalGerado.value
+    : totalGeradoMes.value
+);
+
+const injetadoExibido = computed(() =>
+  modoVisualizacao.value === 'geral'
+    ? totalInjetado.value
+    : totalInjetadoMes.value
+);
+
+// 🌱 SUSTENTABILIDADE (APENAS GERAL)
+const co2Total = computed(() => totalGerado.value * 0.536);
+const co2Ton = computed(() => co2Total.value / 1000);
+const arvores = computed(() => Math.round(co2Total.value / 150));
+
+// 📍 ABRIR DIALOG
 const abrirDialogUsina = (usina) => {
   usinaSelecionada.value = usina;
   dialogUsina.value = true;
-  imagensSelecionada.value = imagens.value.filter(item => item.idGeradora === usina.id) 
 
-  const geraUsinaIndi = geracoes.value.filter(item => item.idGeradora === usinaSelecionada.value.id)
-  const injeUsinaIndi = injecoes.value.filter(item => item.idGeradora === usinaSelecionada.value.id)
-
-  totalGerado.value = 0
-  geraUsinaIndi.forEach(item =>{
-    totalGerado.value += Number(item.geracao)
-  })
-
-  totalInjetado.value = 0
-  injeUsinaIndi.forEach(item =>{
-    totalInjetado.value += Number(item.injetadoFPonta)
-  }) 
-
-  totalCompensado.value = (Number(totalGerado.value) * 0.72)
+  imagensSelecionada.value = imagens.value.filter(i => i.idGeradora === usina.id);
+  calcularTotais(usina.id);
 };
 
 const procurarLocal = async (usinaInfo) => {
@@ -94,7 +169,7 @@ const procurarLocal = async (usinaInfo) => {
 `;
 
 
-  const marker = new Marker({ color: '#5D87FF' })
+  const marker = new Marker({ color: alterarColor(usinaInfo.secretaria) })
     .setLngLat([localInfo.value.results[0].geometry.location.lng, localInfo.value.results[0].geometry.location.lat])
     .setPopup(new Popup().setHTML(popupHTML))
     .addTo(map.value);
@@ -220,65 +295,112 @@ onUnmounted(() => {
   <div class="map-wrap">
     <div class="map" ref="mapContainer"></div>
     
-    <!-- Dialog para mostrar detalhes da usina -->
-    <v-row justify="center">
-  <v-dialog v-model="dialogUsina" width="800">
+      <!-- Dialog para mostrar detalhes da usina -->
+      <v-row justify="center">
+        <v-dialog v-model="dialogUsina" width="800">
     <v-card>
-      <v-card-title style="background: linear-gradient(to bottom, #4d7fff, #1e73be); color: white;">
-        <span class="text-h5">{{ usinaSelecionada?.nome }}</span>
+
+      <v-card-title class="title">
+        {{ usinaSelecionada?.nome }}
       </v-card-title>
-          <v-col cols="12" style="padding-top: 7px;">
-              <p><strong>Potência:</strong> {{ usinaSelecionada?.potencia }} kWp</p> 
-            </v-col> 
-      <v-card-text style="padding: 0px;">
-        <v-container style="padding-top: 0px; margin-top: 0px;">
-  
-          <v-row>
-            <v-col cols="12" class="text-center" style="padding-top: 0px; padding-bottom: 0px;">
-            <v-carousel hide-delimiters height="300" width="300">
-              <v-carousel-item v-for="(imagem, index) in imagensSelecionada" :key="index" :src="imagem.link" contain height="400"
-              ></v-carousel-item>
-            </v-carousel>   
-            </v-col>
 
-            <v-col cols="12" sm="6" md="4">
-              <v-card class="pa-3 text-center" elevation="3">
-                <p class="text-h6 font-weight-bold">Gerado</p>
-                <!-- <p style="font-size: 10px;">Geral</p> -->
-                <p class="text-h5 text-primary">{{ totalGerado || '0' }} kWh</p>
-              </v-card>
-            </v-col>
+      <v-col cols="12" style="padding-top: 7px;">
+        <p><strong>Potência:</strong> {{ usinaSelecionada?.potencia }} kWp</p>
+      </v-col>
 
-            <v-col cols="12" sm="6" md="4">
-              <v-card class="pa-3 text-center" elevation="3">
-                <p class="text-h6 font-weight-bold">Injetado</p>
-                <!-- <p style="font-size: 10px;">Geral</p> -->
-                <p class="text-h5 text-success">{{ totalInjetado || '0' }}</p>
-              </v-card>
-            </v-col>
+      <v-row> 
+        <v-col cols="12" class="text-center" style="padding-top: 0px; padding-bottom: 0px;"> 
+            <v-carousel hide-delimiters height="300" width="300"> 
+              <v-carousel-item v-for="(imagem, index) in imagensSelecionada" :key="index" :src="imagem.link" contain height="400" >
+              </v-carousel-item> 
+            </v-carousel> 
+          </v-col>
+        </v-row>
 
-            <v-col cols="12" sm="12" md="4">
-              <v-card class="pa-3 text-center" elevation="3">
-                <p class="text-h6 font-weight-bold">Quant. Placas</p>
-                <!-- <p style="font-size: 10px;">Geral</p> -->
-                <p class="text-h5 text-warning">{{ usinaSelecionada?.qtdPlaca || '0' }}</p>
-              </v-card>
-            </v-col>
 
-            <!-- <v-col cols="12" sm="12" md="4">
-              <v-card class="pa-3 text-center" elevation="3">
-                <p class="text-h6 font-weight-bold">Compensado</p>
-                <p style="font-size: 10px;">tarifa média</p>
-                <p class="text-h5 text-warning">R$ {{ totalCompensado || '0' }}</p>
-              </v-card>
-            </v-col> -->
-          </v-row>
- 
-        </v-container>
-      </v-card-text> 
+      <!-- TOGGLE -->
+      <v-row justify="center" class="mt-2">
+        <v-btn style="margin-right: 20px;" :color="modoVisualizacao==='geral'?'primary':''" @click="modoVisualizacao='geral'">Geral</v-btn>
+        <v-btn :color="modoVisualizacao==='mensal'?'primary':''" @click="modoVisualizacao='mensal'">Mensal</v-btn>
+      </v-row>
+
+      <!-- MÊS -->
+      <v-row v-if="modoVisualizacao==='mensal'" justify="center" class="mt-5 mb-2">
+        <v-btn icon @click="mesAnterior">◀</v-btn>
+        <span class="mx-3">{{ mesAnoLabel }}</span>
+        <v-btn icon @click="proximoMes">▶</v-btn>
+      </v-row>
+
+      <v-card-text>
+        <transition name="fade-slide" mode="out-in">
+          <div :key="modoVisualizacao + mesAnoLabel">
+
+            <!-- LOADING -->
+            <v-row v-if="loadingMes">
+              <v-col cols="6"><v-skeleton-loader type="card"/></v-col>
+              <v-col cols="6"><v-skeleton-loader type="card"/></v-col>
+
+              <v-col cols="4"><v-skeleton-loader type="card"/></v-col>
+              <v-col cols="4"><v-skeleton-loader type="card"/></v-col>
+              <v-col cols="4"><v-skeleton-loader type="card"/></v-col>
+            </v-row>
+
+            <!-- CONTEÚDO -->
+            <template v-else>
+
+              <!-- 🔝 LINHA 1 -->
+              <v-row>
+                <v-col cols="12" sm="6">
+                  <v-card class="pa-3 text-center">
+                    <h5>Gerado</h5>
+                    <strong>{{ geradoExibido.toLocaleString('pt-BR') }} kWh</strong>
+                  </v-card>
+                </v-col>
+
+                <v-col cols="12" sm="6">
+                  <v-card class="pa-3 text-center">
+                    <h5>Injetado</h5>
+                    <strong>{{ injetadoExibido.toLocaleString('pt-BR') }}</strong>
+                  </v-card>
+                </v-col>
+              </v-row>
+
+              <!-- 🔽 LINHA 2 (SÓ NO GERAL) -->
+              <v-row v-if="modoVisualizacao === 'geral'" class="mt-4">
+
+                <v-col cols="12" sm="6" md="4">
+                  <v-card class="pa-3 text-center">
+                    <h5>Placas</h5>
+                    <strong>{{ usinaSelecionada?.qtdPlaca }}</strong>
+                  </v-card>
+                </v-col>
+
+                <v-col cols="12" sm="6" md="4">
+                  <v-card class="pa-3 text-center">
+                    <h5>CO₂ evitado</h5>
+                    <strong>{{ co2Ton.toFixed(2) }} ton</strong>
+                  </v-card>
+                </v-col>
+
+                <v-col cols="12" sm="6" md="4">
+                  <v-card class="pa-3 text-center">
+                    <h5>Árvores</h5>
+                    <strong>🌳 {{ arvores }}</strong>
+                  </v-card>
+                </v-col>
+
+              </v-row>
+
+            </template>
+
+          </div>
+        </transition>
+        
+
+      </v-card-text>
     </v-card>
   </v-dialog>
-</v-row>
+      </v-row>
 
   </div>
 </template>
@@ -295,5 +417,29 @@ onUnmounted(() => {
   position: absolute;
   width: 100%;
   height: 100%;
+}
+
+.title {
+  background: linear-gradient(to bottom, #4d7fff, #1e73be);
+  color: white;
+}
+
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: all 0.3s ease;
+}
+
+.fade-slide-enter-from {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.v-card {
+  margin-bottom: 8px;
 }
 </style>
