@@ -1,6 +1,6 @@
 import {
     ApertureIcon,
-    CopyIcon, FileIcon, FilesIcon,
+    CopyIcon, FileIcon, FilesIcon, DatabaseIcon,
     LayoutDashboardIcon, PlugIcon, BuildingIcon, FilePowerIcon, BoltIcon, ToolIcon, RobotIcon, BulbIcon, ChartArrowsVerticalIcon, ChartPie2Icon, ClipboardCheckIcon, CheckboxIcon,
     ZoomCheckIcon, ChartRadarIcon
 } from 'vue-tabler-icons';
@@ -70,6 +70,16 @@ const sidebarItem: menu[] = [
         icon: FilesIcon,                               
         to: '/lista/', 
         // chip: '★',
+        chipColor: 'primary',
+        // disabled: true, 
+        // chip: '[MANUT]',
+        // chipColor: 'error'
+    },
+    {
+        title: 'Dados',
+        icon: DatabaseIcon,                               
+        to: '/dados/', 
+        chip: '★',
         chipColor: 'primary',
         // disabled: true, 
         // chip: '[MANUT]',
