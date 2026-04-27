@@ -65,7 +65,8 @@ function montarLinhas() {
     nome: u.nome,
     consumokWh: null,
     valorRS: null,
-    injetado: null
+    injetadoPonta: null,
+    injetadoFPonta: null
   }));
 }
 
@@ -83,26 +84,72 @@ const prediosFiltrados = computed(() => {
 // -------------------------------
 // AÇÕES
 // -------------------------------
-function enviarGeracao() {
-  const payload = linhasGeracao.value.map((item) => ({
-    usina: item.usina,
-    mes: mesGeracao.value,
-    geracao: item.valor
-  }));
+const loadingGeracao = ref(false);
+const snackbar = ref(false);
+const snackbarTexto = ref("");
 
-  console.log(payload);
+async function enviarGeracao() {
+  try {
+    loadingGeracao.value = true;
+
+    for (const item of linhasGeracao.value) {
+      await $fetch(`${API_BASE_URL}/relatoriogeracao/`, {
+        method: "POST",
+        body: {
+          idGeradora: item.usina,
+          geracao: item.valor || 0,
+          mes: mesGeracao.value,
+          ano: anoGeracao.value
+        }
+      });
+    }
+
+    snackbarTexto.value = "Gerações enviadas com sucesso!";
+    snackbar.value = true;
+
+  } catch (error) {
+    console.error(error);
+
+    snackbarTexto.value = "Erro ao enviar gerações.";
+    snackbar.value = true;
+
+  } finally {
+    loadingGeracao.value = false;
+  }
 }
 
-function enviarUsinaMensal() {
-  const payload = linhasUsina.value.map((item) => ({
-    usina: item.usina,
-    mes: mesUsina.value,
-    consumokWh: item.consumokWh,
-    valorRS: item.valorRS,
-    injetado: item.injetado
-  }));
+const loadingUsina = ref(false);
+async function enviarUsinaMensal() {
+  try {
+    loadingUsina.value = true;
 
-  console.log(payload);
+    for (const item of linhasUsina.value) {
+      await $fetch(`${API_BASE_URL}/relatoriousina/`, {
+        method: "POST",
+        body: {
+          idGeradora: item.usina,
+          injetadoPonta: item.injetadoPonta || 0,
+          injetadoFPonta: item.injetadoFPonta || 0,
+          consumoReais: item.valorRS || 0,
+          consumoKWH: item.consumokWh || 0,
+          mes: mesUsina.value,
+          ano: anoUsina.value
+        }
+      });
+    }
+
+    snackbarTexto.value = "Dados das usinas enviados com sucesso!";
+    snackbar.value = true;
+
+  } catch (error) {
+    console.error(error);
+
+    snackbarTexto.value = "Erro ao enviar dados das usinas.";
+    snackbar.value = true;
+
+  } finally {
+    loadingUsina.value = false;
+  }
 }
 
 function marcarDownload(item) {
@@ -199,7 +246,13 @@ function marcarDownload(item) {
         </tbody>
       </v-table>
 
-      <v-btn color="primary" class="mt-4" @click="enviarGeracao">
+      <v-btn
+        color="primary"
+        class="mt-4"
+        :loading="loadingGeracao"
+        :disabled="loadingGeracao"
+        @click="enviarGeracao"
+      >
         Enviar Dados
       </v-btn>
     </div>
@@ -234,7 +287,8 @@ function marcarDownload(item) {
             <th>Usina</th>
             <th>Consumo kWh</th>
             <th>R$</th>
-            <th>Injetado</th>
+            <th>Injetado Ponta</th>
+            <th>Injetado Fora Ponta</th>
           </tr>
         </thead>
 
@@ -246,6 +300,7 @@ function marcarDownload(item) {
               <v-text-field
                 v-model="item.consumokWh"
                 type="number"
+                step="0.01"
                 density="compact"
                 hide-details
                 variant="outlined"
@@ -256,6 +311,7 @@ function marcarDownload(item) {
               <v-text-field
                 v-model="item.valorRS"
                 type="number"
+                step="0.01"
                 density="compact"
                 hide-details
                 variant="outlined"
@@ -264,8 +320,20 @@ function marcarDownload(item) {
 
             <td>
               <v-text-field
-                v-model="item.injetado"
+                v-model="item.injetadoPonta"
                 type="number"
+                step="0.01"
+                density="compact"
+                hide-details
+                variant="outlined"
+              />
+            </td>
+
+            <td>
+              <v-text-field
+                v-model="item.injetadoFPonta"
+                type="number"
+                step="0.01"
                 density="compact"
                 hide-details
                 variant="outlined"
@@ -275,7 +343,13 @@ function marcarDownload(item) {
         </tbody>
       </v-table>
 
-      <v-btn color="primary" class="mt-4" @click="enviarUsinaMensal">
+      <v-btn
+        color="primary"
+        class="mt-4"
+        :loading="loadingUsina"
+        :disabled="loadingUsina"
+        @click="enviarUsinaMensal"
+      >
         Enviar Dados
       </v-btn>
     </div>
@@ -330,6 +404,15 @@ function marcarDownload(item) {
       </v-alert>
     </div>
   </UiParentCard>
+
+  <v-snackbar
+    v-model="snackbar"
+    color="success"
+    timeout="3000"
+  >
+    {{ snackbarTexto }}
+  </v-snackbar>
+ 
 </template>
 
 <style scoped>
