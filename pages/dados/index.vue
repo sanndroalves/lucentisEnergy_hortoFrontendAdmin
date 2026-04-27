@@ -62,6 +62,7 @@ function montarLinhas() {
   }));
 
   linhasUsina.value = usinas.value.map((u) => ({
+    uc: u.uc,
     usina: u.id,
     nome: u.nome,
     consumokWh: null,
@@ -287,6 +288,7 @@ function marcarDownload(item) {
       <v-table>
         <thead>
           <tr>
+            <th>UC</th>
             <th>Usina</th>
             <th>Consumo kWh</th>
             <th>R$</th>
@@ -297,6 +299,7 @@ function marcarDownload(item) {
 
         <tbody>
           <tr v-for="item in linhasUsina" :key="item.usina">
+            <td>{{ item.uc }}</td>
             <td>{{ item.nome }}</td>
 
             <td>
