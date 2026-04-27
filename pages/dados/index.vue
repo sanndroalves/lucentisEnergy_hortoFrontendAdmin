@@ -55,6 +55,7 @@ const linhasUsina = ref([]);
 
 function montarLinhas() {
   linhasGeracao.value = usinas.value.map((u) => ({
+    uc: u.uc,
     usina: u.id,
     nome: u.nome,
     valor: null
@@ -224,6 +225,7 @@ function marcarDownload(item) {
       <v-table>
         <thead>
           <tr>
+            <th>UC</th>
             <th>Usina</th>
             <th>Geração (kWh)</th>
           </tr>
@@ -231,6 +233,7 @@ function marcarDownload(item) {
 
         <tbody>
           <tr v-for="item in linhasGeracao" :key="item.usina">
+            <td>{{ item.uc }}</td>
             <td>{{ item.nome }}</td>
 
             <td width="250">
