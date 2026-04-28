@@ -207,8 +207,8 @@ const modoPainel = ref('publico');
           </svg>
         </div>
         <div class="hd-texts">
-          <span class="hd-eyebrow">PREFEITURA DE HORTOLÂNDIA</span>
-          <h1 class="hd-title">EFICIÊNCIA ENERGÉTICA</h1>
+          <span class="hd-eyebrow">EFICIÊNCIA ENERGÉTICA</span>
+          <h1 class="hd-title">PREFEITURA DE HORTOLÂNDIA</h1>
         </div>
         <div class="hd-pulse-dot"></div>
       </div>
