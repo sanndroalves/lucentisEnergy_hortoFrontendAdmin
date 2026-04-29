@@ -503,6 +503,16 @@ const mesRelUni = ref("");
         dialogRelatoriosEditar.value = true
     }
 
+    /* ORDERNAR RELATÓRIOS DE FORMA DECRESCENTE */
+    const relatoriosOrdenados = computed(() => {
+      return [...relatoriosUnidade.value].sort((a, b) => {
+        if (a.ano !== b.ano) {
+          return b.ano - a.ano; // Ano decrescente
+        }
+        return b.mes - a.mes; // Mês decrescente
+      });
+    });
+
     const saveChangesRelatorio = async (idRelaEdit) => {
       if (!mesRelUniEdit.value || !anoRelUniEdit.value || !consumoUniEdit.value || !valorConUniEdit.value || !enerTusdUniEdit.value || !valorTusdUniEdit.value || !enerTeUniEdit.value || !valorTeUniEdit.value) {
         showErrorCampoEdit.value = true;
@@ -1151,7 +1161,7 @@ const contaPracas = predios.value.filter(item => item.secretaria === 'P')
                     </tr>
                     </thead>
                     <tbody>
-                    <tr v-for="relatorio in relatoriosUnidade" :key="relatorio.id">
+                    <tr v-for="relatorio in relatoriosOrdenados" :key="relatorio.id">
                         <td>{{ relatorio.id }}</td>
                         <td>{{ relatorio.ano }}</td>
                         <td>{{ relatorio.mes }}</td>
