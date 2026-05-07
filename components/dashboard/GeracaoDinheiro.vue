@@ -140,15 +140,7 @@ const maiorMes = computed(() => {
         <span class="gd-kpi-label">Total compensado no ano</span>
         <span class="gd-kpi-val">{{ fmtBrl(somaTotalAnual) }}</span>
       </div>
-      <div class="gd-kpi-side" v-if="maiorMes">
-        <div class="gd-kpi-tag">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-            <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
-            <polyline points="17 6 23 6 23 12"/>
-          </svg>
-          Melhor mês: <strong>{{ maiorMes.mes }}</strong> — {{ fmtBrl(maiorMes.val) }}
-        </div>
-      </div>
+
     </div>
 
     <!-- Divisor -->
@@ -253,15 +245,7 @@ const maiorMes = computed(() => {
   font-size: 34px !important; font-weight: 900 !important;
   letter-spacing: -.03em !important; color: #059669 !important; line-height: 1 !important;
 }
-.gd-kpi-tag {
-  display: flex !important; align-items: center !important; gap: 5px !important;
-  font-size: 11px !important; font-weight: 600 !important; color: #64748b !important;
-  background: #F8FAFC !important; border: 1px solid #E2E8F0 !important;
-  border-radius: 20px !important; padding: 5px 12px !important;
-  white-space: nowrap !important;
-}
-.gd-kpi-tag svg { stroke: #059669 !important; flex-shrink: 0 !important; }
-.gd-kpi-tag strong { color: #0f172a !important; font-weight: 800 !important; }
+
 
 /* ══════ DIVIDER ══════ */
 .gd-divider {
