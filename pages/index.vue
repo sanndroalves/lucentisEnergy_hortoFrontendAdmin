@@ -60,111 +60,97 @@ const baixarPDF = () => {
             <span>Painel de Controle</span>
           </nav>
           <h1 class="ct-page-title">Painel de Controle</h1>
-          <p class="ct-page-sub">Visão geral do sistema fotovoltaico · Hortolândia</p>
+          <p class="ct-page-sub">Visão geral do sistema energético · Hortolândia</p>
         </div>
       </div>
       <img src="https://i.imgur.com/dn2LqE5.png" class="ct-page-img" alt="">
     </div>
 
     <!-- ══════════════════════════════════════
-         KPI CARDS
+         KPI CARDS — linha única desktop
     ══════════════════════════════════════ -->
-    <div class="ct-kpi-grid">
+    <div class="ct-kpi-row">
 
-      <div class="ct-kpi ct-kpi-indigo">
-        <div class="ct-kpi-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <div class="ct-kpi ct-ki">
+        <div class="ct-kpi-badge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <path d="M13 10V3L4 14h7v7l9-11h-7z"/>
           </svg>
         </div>
-        <div class="ct-kpi-body">
-          <span class="ct-kpi-label">Usinas</span>
-          <span class="ct-kpi-value">{{ usinas.length }}</span>
-          <span class="ct-kpi-note">fotovoltaicas ativas</span>
-        </div>
-        <div class="ct-kpi-orb"></div>
+        <span class="ct-kpi-label">Usinas</span>
+        <span class="ct-kpi-val">{{ usinas.length }}</span>
+        <span class="ct-kpi-note">fotovoltaicas</span>
+        <div class="ct-kpi-bottom"></div>
       </div>
 
-      <div class="ct-kpi ct-kpi-amber">
-        <div class="ct-kpi-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <div class="ct-kpi ct-ka">
+        <div class="ct-kpi-badge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/>
             <line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
             <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/>
-            <line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
-            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
           </svg>
         </div>
-        <div class="ct-kpi-body">
-          <span class="ct-kpi-label">IP</span>
-          <span class="ct-kpi-value">{{ valorIluminacao.length }}</span>
-          <span class="ct-kpi-note">iluminação pública</span>
-        </div>
-        <div class="ct-kpi-orb"></div>
+        <span class="ct-kpi-label">IP</span>
+        <span class="ct-kpi-val">{{ valorIluminacao.length }}</span>
+        <span class="ct-kpi-note">iluminação pública</span>
+        <div class="ct-kpi-bottom"></div>
       </div>
 
-      <div class="ct-kpi ct-kpi-green">
-        <div class="ct-kpi-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <div class="ct-kpi ct-kg">
+        <div class="ct-kpi-badge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
             <polyline points="9 22 9 12 15 12 15 22"/>
           </svg>
         </div>
-        <div class="ct-kpi-body">
-          <span class="ct-kpi-label">Prédios</span>
-          <span class="ct-kpi-value">{{ valoresPredios.length }}</span>
-          <span class="ct-kpi-note">unidades públicas</span>
-        </div>
-        <div class="ct-kpi-orb"></div>
+        <span class="ct-kpi-label">Prédios</span>
+        <span class="ct-kpi-val">{{ valoresPredios.length }}</span>
+        <span class="ct-kpi-note">unidades públicas</span>
+        <div class="ct-kpi-bottom"></div>
       </div>
 
-      <div class="ct-kpi ct-kpi-teal">
-        <div class="ct-kpi-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <div class="ct-kpi ct-kt">
+        <div class="ct-kpi-badge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
             <circle cx="9" cy="7" r="4"/>
             <path d="M23 21v-2a4 4 0 00-3-3.87"/>
             <path d="M16 3.13a4 4 0 010 7.75"/>
           </svg>
         </div>
-        <div class="ct-kpi-body">
-          <span class="ct-kpi-label">Unidades</span>
-          <span class="ct-kpi-value">{{ valoresUnidadesCompensa.length }}</span>
-          <span class="ct-kpi-note">compensando energia</span>
-        </div>
-        <div class="ct-kpi-orb"></div>
+        <span class="ct-kpi-label">Unidades</span>
+        <span class="ct-kpi-val">{{ valoresUnidadesCompensa.length }}</span>
+        <span class="ct-kpi-note">compensando</span>
+        <div class="ct-kpi-bottom"></div>
       </div>
 
-      <div class="ct-kpi ct-kpi-violet">
-        <div class="ct-kpi-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <div class="ct-kpi ct-kv">
+        <div class="ct-kpi-badge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
             <polyline points="14 2 14 8 20 8"/>
             <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
           </svg>
         </div>
-        <div class="ct-kpi-body">
-          <span class="ct-kpi-label">Relatórios</span>
-          <span class="ct-kpi-value">{{ relatorios.length }}</span>
-          <span class="ct-kpi-note">registros no sistema</span>
-        </div>
-        <div class="ct-kpi-orb"></div>
+        <span class="ct-kpi-label">Relatórios</span>
+        <span class="ct-kpi-val">{{ relatorios.length }}</span>
+        <span class="ct-kpi-note">no sistema</span>
+        <div class="ct-kpi-bottom"></div>
       </div>
 
-      <div class="ct-kpi ct-kpi-rose">
-        <div class="ct-kpi-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <div class="ct-kpi ct-kr">
+        <div class="ct-kpi-badge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <circle cx="12" cy="12" r="3"/>
             <path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/>
-            <path d="M15.54 8.46a5 5 0 010 7.07M8.46 8.46a5 5 0 000 7.07"/>
           </svg>
         </div>
-        <div class="ct-kpi-body">
-          <span class="ct-kpi-label">Manutenções</span>
-          <span class="ct-kpi-value">{{ manutencoes.length }}</span>
-          <span class="ct-kpi-note">registros abertos</span>
-        </div>
-        <div class="ct-kpi-orb"></div>
+        <span class="ct-kpi-label">Manutenções</span>
+        <span class="ct-kpi-val">{{ manutencoes.length }}</span>
+        <span class="ct-kpi-note">registros abertos</span>
+        <div class="ct-kpi-bottom"></div>
       </div>
 
     </div>
@@ -257,86 +243,90 @@ const baixarPDF = () => {
 .ct-page-sub { font-size: 13px !important; color: #64748b !important; margin: 0 !important; }
 .ct-page-img { height: 110px !important; opacity: .85 !important; }
 
-/* ══════════ KPI GRID ══════════ */
-.ct-kpi-grid {
+/* ══════════ KPI ROW — linha única desktop ══════════ */
+.ct-kpi-row {
   display: grid !important;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)) !important;
-  gap: 14px !important;
+  grid-template-columns: repeat(6, 1fr) !important;
+  gap: 10px !important;
   padding: 0 28px 28px !important;
 }
 
 .ct-kpi {
   background: #ffffff !important;
-  border: 1px solid #E2E8F0 !important;
-  border-radius: 16px !important;
-  padding: 18px !important;
-  display: flex !important;
-  align-items: center !important;
-  gap: 14px !important;
+  border: 1px solid #f1f5f9 !important;
+  border-radius: 14px !important;
+  padding: 16px 14px 14px !important;
   position: relative !important;
   overflow: hidden !important;
-  box-shadow: 0 1px 4px rgba(0,0,0,.05) !important;
   transition: transform .18s, box-shadow .18s !important;
+  cursor: default !important;
+  display: flex !important;
+  flex-direction: column !important;
 }
 .ct-kpi:hover {
-  transform: translateY(-3px) !important;
-  box-shadow: 0 8px 24px rgba(0,0,0,.09) !important;
+  transform: translateY(-4px) !important;
+  box-shadow: 0 8px 28px rgba(0,0,0,.08) !important;
 }
 .ct-kpi::before {
   content: '' !important; position: absolute !important;
-  top: 0 !important; left: 0 !important; right: 0 !important; height: 3px !important;
+  top: 0 !important; left: 0 !important; right: 0 !important; height: 2px !important;
 }
+.ct-ki::before { background: #4F46E5 !important; }
+.ct-ka::before { background: #D97706 !important; }
+.ct-kg::before { background: #059669 !important; }
+.ct-kt::before { background: #0891B2 !important; }
+.ct-kv::before { background: #7C3AED !important; }
+.ct-kr::before { background: #E11D48 !important; }
 
-/* Cores por tipo */
-.ct-kpi-indigo::before { background: #4F46E5 !important; }
-.ct-kpi-amber::before  { background: #D97706 !important; }
-.ct-kpi-green::before  { background: #059669 !important; }
-.ct-kpi-teal::before   { background: #0891B2 !important; }
-.ct-kpi-violet::before { background: #7C3AED !important; }
-.ct-kpi-rose::before   { background: #E11D48 !important; }
-
-/* Ícone */
-.ct-kpi-icon {
-  width: 44px !important; height: 44px !important;
-  border-radius: 12px !important;
+/* Badge ícone no canto */
+.ct-kpi-badge {
+  position: absolute !important; top: 13px !important; right: 13px !important;
+  width: 28px !important; height: 28px !important; border-radius: 8px !important;
   display: flex !important; align-items: center !important; justify-content: center !important;
-  flex-shrink: 0 !important;
 }
-.ct-kpi-indigo .ct-kpi-icon { background: #EEF2FF !important; color: #4F46E5 !important; }
-.ct-kpi-amber  .ct-kpi-icon { background: #FFFBEB !important; color: #D97706 !important; }
-.ct-kpi-green  .ct-kpi-icon { background: #ECFDF5 !important; color: #059669 !important; }
-.ct-kpi-teal   .ct-kpi-icon { background: #ECFEFF !important; color: #0891B2 !important; }
-.ct-kpi-violet .ct-kpi-icon { background: #F5F3FF !important; color: #7C3AED !important; }
-.ct-kpi-rose   .ct-kpi-icon { background: #FFF1F2 !important; color: #E11D48 !important; }
+.ct-ki .ct-kpi-badge { background: #EEF2FF !important; color: #4F46E5 !important; }
+.ct-ka .ct-kpi-badge { background: #FFFBEB !important; color: #D97706 !important; }
+.ct-kg .ct-kpi-badge { background: #ECFDF5 !important; color: #059669 !important; }
+.ct-kt .ct-kpi-badge { background: #ECFEFF !important; color: #0891B2 !important; }
+.ct-kv .ct-kpi-badge { background: #F5F3FF !important; color: #7C3AED !important; }
+.ct-kr .ct-kpi-badge { background: #FFF1F2 !important; color: #E11D48 !important; }
+.ct-kpi-badge svg { stroke: currentColor !important; }
 
-.ct-kpi-icon svg { stroke: currentColor !important; }
-
-/* Corpo do KPI */
-.ct-kpi-body {
-  display: flex !important; flex-direction: column !important; gap: 2px !important; flex: 1 !important;
-}
+/* Textos */
 .ct-kpi-label {
   font-size: 10px !important; font-weight: 700 !important;
-  letter-spacing: .1em !important; text-transform: uppercase !important; color: #94A3B8 !important;
+  letter-spacing: .12em !important; text-transform: uppercase !important;
+  color: #94A3B8 !important; display: block !important;
+  margin-bottom: 10px !important; margin-top: 2px !important;
 }
-.ct-kpi-value {
-  font-size: 28px !important; font-weight: 900 !important;
-  letter-spacing: -.03em !important; color: #0f172a !important; line-height: 1 !important;
+.ct-kpi-val {
+  font-size: 32px !important; font-weight: 900 !important;
+  letter-spacing: -.04em !important; line-height: 1 !important;
+  display: block !important; margin-bottom: 5px !important;
 }
-.ct-kpi-note { font-size: 11px !important; color: #94A3B8 !important; }
+.ct-ki .ct-kpi-val { color: #4F46E5 !important; }
+.ct-ka .ct-kpi-val { color: #D97706 !important; }
+.ct-kg .ct-kpi-val { color: #059669 !important; }
+.ct-kt .ct-kpi-val { color: #0891B2 !important; }
+.ct-kv .ct-kpi-val { color: #7C3AED !important; }
+.ct-kr .ct-kpi-val { color: #E11D48 !important; }
 
-/* Orb decorativo */
-.ct-kpi-orb {
-  position: absolute !important; right: -20px !important; top: -20px !important;
-  width: 80px !important; height: 80px !important; border-radius: 50% !important;
-  opacity: .06 !important; pointer-events: none !important;
+.ct-kpi-note {
+  font-size: 11px !important; color: #94A3B8 !important;
+  font-weight: 500 !important; display: block !important;
 }
-.ct-kpi-indigo .ct-kpi-orb { background: #4F46E5 !important; }
-.ct-kpi-amber  .ct-kpi-orb { background: #D97706 !important; }
-.ct-kpi-green  .ct-kpi-orb { background: #059669 !important; }
-.ct-kpi-teal   .ct-kpi-orb { background: #0891B2 !important; }
-.ct-kpi-violet .ct-kpi-orb { background: #7C3AED !important; }
-.ct-kpi-rose   .ct-kpi-orb { background: #E11D48 !important; }
+
+/* Fundo sutil no bottom */
+.ct-kpi-bottom {
+  position: absolute !important; bottom: 0 !important; left: 0 !important; right: 0 !important;
+  height: 40px !important; border-radius: 0 0 14px 14px !important; opacity: .04 !important;
+}
+.ct-ki .ct-kpi-bottom { background: #4F46E5 !important; }
+.ct-ka .ct-kpi-bottom { background: #D97706 !important; }
+.ct-kg .ct-kpi-bottom { background: #059669 !important; }
+.ct-kt .ct-kpi-bottom { background: #0891B2 !important; }
+.ct-kv .ct-kpi-bottom { background: #7C3AED !important; }
+.ct-kr .ct-kpi-bottom { background: #E11D48 !important; }
 
 /* ══════════ CONTENT GRID ══════════ */
 .ct-content-grid {
@@ -379,11 +369,14 @@ const baixarPDF = () => {
 .ct-footer strong { color: #059669 !important; font-weight: 700 !important; }
 
 /* ══════════ MOBILE ══════════ */
+@media (max-width: 1024px) {
+  .ct-kpi-row { grid-template-columns: repeat(3, 1fr) !important; }
+}
 @media (max-width: 640px) {
   .ct-page-header { padding: 16px 20px !important; flex-direction: column !important; align-items: flex-start !important; gap: 12px !important; }
   .ct-page-img { display: none !important; }
   .ct-page-title { font-size: 22px !important; }
-  .ct-kpi-grid { padding: 0 16px 20px !important; grid-template-columns: 1fr 1fr !important; }
+  .ct-kpi-row { padding: 0 16px 20px !important; grid-template-columns: 1fr 1fr !important; }
   .ct-content-grid { padding: 0 16px !important; }
 }
 </style>

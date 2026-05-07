@@ -50,16 +50,16 @@ const sDrawer = ref(true);
 
             <!-- Centro -->
             <div class="lc-header-center">
-                <div class="lc-live-badge">
+                <!-- <div class="lc-live-badge">
                     <span class="lc-live-dot"></span>
                     <span class="lc-live-txt">Sistema Ativo</span>
-                </div>
+                </div> -->
             </div>
 
             <!-- Direita -->
             <div class="lc-header-right">
                 <!-- <LayoutFullVerticalHeaderNotificationDD /> -->
-                <div class="lc-header-divider-v"></div>
+                <!-- <div class="lc-header-divider-v"></div> -->
                 <LayoutFullVerticalHeaderProfileDD />
             </div>
         </div>
