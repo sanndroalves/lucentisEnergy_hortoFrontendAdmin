@@ -58,7 +58,7 @@ const sDrawer = ref(true);
 
             <!-- Direita -->
             <div class="lc-header-right">
-                <LayoutFullVerticalHeaderNotificationDD />
+                <!-- <LayoutFullVerticalHeaderNotificationDD /> -->
                 <div class="lc-header-divider-v"></div>
                 <LayoutFullVerticalHeaderProfileDD />
             </div>
