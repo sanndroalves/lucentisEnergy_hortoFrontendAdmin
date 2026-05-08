@@ -10,10 +10,7 @@ import { defineAsyncComponent } from 'vue';
 import RelatorioGeracao from "~~/components/dashboard/RelatorioGeracao.vue";
 import AnaliseGeracao from "~~/components/dashboard/AnaliseGeracao.vue";
 import GeracaoDinheiro from "@/components/dashboard/GeracaoDinheiro.vue"; 
-const Irregular = defineAsyncComponent(() => import("@/components/dashboard/Irregular.vue"));
-import Alerta from "@/components/dashboard/Alerta.vue"; 
-import VerificarStrings from "@/components/dashboard/VerificarStrings.vue"; 
-import SolarMan from '~/components/dashboard/SolarMan.vue';
+const Irregular = defineAsyncComponent(() => import("@/components/dashboard/Irregular.vue")); 
 
 const { data: usinas }    = await useFetch(`${API_BASE_URL}/usina/`); 
 const { data: unidades }  = await useFetch(`${API_BASE_URL}/unidadecompensacao`); 
