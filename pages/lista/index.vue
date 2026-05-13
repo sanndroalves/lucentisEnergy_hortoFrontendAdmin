@@ -617,7 +617,7 @@
 
     <!-- Rodapé -->
     <div class="lr-footer">
-      Desenvolvido por <strong>AleTechLab</strong> · Sistema LUCENTIS — Hortolândia · {{ anoAtual }}
+      Desenvolvido por <strong>Lucentis</strong> · Sistema LUCENTIS — Hortolândia · {{ anoAtual }}
     </div>
 
   </div>

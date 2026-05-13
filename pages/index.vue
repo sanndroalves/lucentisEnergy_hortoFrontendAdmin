@@ -191,7 +191,7 @@ const baixarPDF = () => {
 
     <!-- Rodapé -->
     <div class="ct-footer">
-      <span>Desenvolvido por <strong>AleTechLab</strong> · Sistema LUCENTIS — Hortolândia</span>
+      <span>Desenvolvido por <strong>Lucentis</strong> · Sistema LUCENTIS — Hortolândia</span>
     </div>
 
   </div>
