@@ -1,0 +1,32 @@
+// scss/_lucentis-tokens.scss
+//
+// Tokens da identidade visual LUCENTIS para telas em "modo comando"
+// (mapa, futuro Centro de Operações Energéticas). Substitui o ciano-neon
+// pulsante (#00e5ff em tudo, glow em cada elemento) por uma paleta sóbria:
+// navy de operações + dourado-solar como único acento de energia + teal
+// para dado/sinal. Ver design system publicado para o racional completo.
+//
+// Importar em qualquer componente com:
+//   @use '~/scss/lucentis-tokens' as lct;
+// ou, enquanto a migração for parcial, usar diretamente as CSS vars abaixo
+// (já expostas globalmente via :root em scss/style.scss).
+
+:root {
+  --lct-navy: #0e1b2b;
+  --lct-navy-surface: #0d1826;
+  --lct-navy-elevated: #101f30;
+  --lct-line: rgba(255, 255, 255, 0.08);
+  --lct-text: #ffffff;
+  --lct-text-dim: rgba(255, 255, 255, 0.45);
+  --lct-text-faint: rgba(255, 255, 255, 0.28);
+
+  --lct-gold: #e8a93c;    // acento único de energia (usinas, destaque, CTA)
+  --lct-teal: #2fb8a6;    // dado/sinal (saúde, disponibilidade, "ao vivo")
+  --lct-blue: #4f8bff;    // educação (mantém associação de cor já usada)
+  --lct-amber: #ffae1f;   // "outros" / avisos não-críticos
+  --lct-red: #d64545;     // crítico / anomalia
+
+  --lct-font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --lct-font-body: 'Public Sans', ui-sans-serif, system-ui, sans-serif;
+  --lct-font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
