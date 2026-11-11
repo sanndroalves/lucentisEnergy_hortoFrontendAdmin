@@ -17,7 +17,7 @@ useHead({
 });
 definePageMeta({ middleware: 'sidebase-auth', layout: 'blank' });
 
-// ─── Dados (mesmos endpoints da tela antiga e dos widgets que ela usava) ───
+// ─── Dados ───
 const [
   { data: usinas },
   { data: unidades },
@@ -43,6 +43,7 @@ const lUnidades    = computed(() => unidades.value ?? []);
 const lRelatorios  = computed(() => relatorios.value ?? []);
 const lManutencoes = computed(() => manutencoes.value ?? []);
 const lGeracoes    = computed(() => geracoes.value ?? []);
+const lInjecoes    = computed(() => injecoes.value ?? []);
 const lProjecoes   = computed(() => projecoes.value ?? []);
 const lChecklists  = computed(() => checklists.value ?? []);
 
@@ -55,75 +56,127 @@ const valoresUnidadesCompensa = computed(() => lUnidades.value.filter(i => i.sta
 const { referencia } = useReferenciaAtual(geracoes);
 const refAno = computed(() => referencia.value.ano);
 const refMes = computed(() => referencia.value.mes);
-const MR = computed(() => `${String(refMes.value).padStart(2, '0')}/${refAno.value}`);
+const mmaaaa = (r) => `${String(r.mes).padStart(2, '0')}/${r.ano}`;
+const MR = computed(() => mmaaaa(referencia.value));
 
-// ─── Indicadores do mapa (total gerado/injetado, placas, investimento) ───
-const {
-  totalGerado, totalInjetado, totalCompensaSoma, totalPlacas, totalInvestido,
-  somarEconomiaPorMesAno, calcularCustoAutoconsumoMes,
-} = useMapaEnergia({ usinas, unidades, geracoes, injecoes, compensa: relatorios });
+const { totalGerado, totalInjetado, totalPlacas, totalInvestido } =
+  useMapaEnergia({ usinas, unidades, geracoes, injecoes, compensa: relatorios });
 
-const { numero } = useEnergyFormat();
+const { numero, moeda } = useEnergyFormat();
 
 // ─── Formatação ───
 const MESES_CURTO = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 const MESES_LONGO = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-const MESES_LETRA = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+const num = (v) => Number(v) || 0;
 const brlCurto = (v) => {
-  const n = Number(v) || 0;
+  const n = num(v);
   if (Math.abs(n) >= 1e6) return `R$ ${numero(n / 1e6, 1)} mi`;
   if (Math.abs(n) >= 1e3) return `R$ ${numero(n / 1e3, 0)} mil`;
   return `R$ ${numero(n, 0)}`;
 };
-const mwhNum = (kwh) => { const m = (Number(kwh) || 0) / 1000; return numero(m, m >= 100 ? 0 : 1); };
+const brlK = (v) => { const n = num(v); return n >= 1e6 ? `${numero(n / 1e6, 1)}mi` : n >= 1e3 ? `${numero(n / 1e3, 0)}k` : numero(n, 0); };
+const mwhNum = (kwh) => { const m = num(kwh) / 1000; return numero(m, m >= 100 ? 0 : 1); };
 const mwh = (kwh) => `${mwhNum(kwh)} MWh`;
+const pctTxt = (v, casas = 1) => (v == null || !isFinite(v) ? '—' : `${numero(v, casas)}%`);
 const doze = () => Array.from({ length: 12 }, () => 0);
 const alturas = (arr, max) => arr.map(v => (max > 0 ? Math.max(4, Math.round((v / max) * 100)) : 4));
+const alt = (v, max) => `${max > 0 ? Math.max(v > 0 ? 2 : 0, (v / max) * 100) : 0}%`;
 
-// ─── Geração projetada × real (lógica do RelatorioGeracao / AnaliseGeracao) ───
-const projPorMes = computed(() => {
+// séries mensais de um ano
+const somaMensal = (lista, ano, fn) => {
   const a = doze();
-  lProjecoes.value.filter(i => i.ano == refAno.value).forEach(i => { a[i.mes - 1] += parseInt(i.projecao) || 0; });
+  lista.forEach(i => { if (i.ano == ano && i.mes >= 1 && i.mes <= 12) a[i.mes - 1] += fn(i); });
   return a;
-});
-const realPorMes = computed(() => {
-  const a = doze();
-  lGeracoes.value.filter(i => i.ano == refAno.value).forEach(i => { a[i.mes - 1] += parseInt(i.geracao) || 0; });
-  return a;
-});
+};
+const projMes = (ano) => somaMensal(lProjecoes.value, ano, i => parseInt(i.projecao) || 0);
+const realMes = (ano) => somaMensal(lGeracoes.value, ano, i => parseInt(i.geracao) || 0);
+const ecoMes  = (ano) => somaMensal(lRelatorios.value, ano, r => num(r.valorInjTUSD) + num(r.valorInjTE));
+
+// ─── Anos selecionáveis (sempre abre no ano vigente) ───
+const ANOS = [2023, 2024, 2025, 2026, 2027, 2028];
+const anoVigente = new Date().getFullYear();
+const anoEco  = ref(anoVigente);
+const anoGraf = ref(anoVigente);
+
+// ─── Geração projetada × real no mês de referência ───
+const projPorMes = computed(() => projMes(refAno.value));
+const realPorMes = computed(() => realMes(refAno.value));
 const projMesRef = computed(() => projPorMes.value[refMes.value - 1]);
 const realMesRef = computed(() => realPorMes.value[refMes.value - 1]);
-const eficiencia = computed(() => (projMesRef.value > 0 ? `${numero((realMesRef.value / projMesRef.value) * 100, 1)}%` : '—'));
+const eficiencia = computed(() => (projMesRef.value > 0 ? pctTxt((realMesRef.value / projMesRef.value) * 100) : '—'));
 const geracaoBarras = computed(() => {
   const max = Math.max(...projPorMes.value, ...realPorMes.value);
   return { real: alturas(realPorMes.value, max), proj: alturas(projPorMes.value, max) };
 });
 
-// ─── Economia compensada (lógica do GeracaoDinheiro: valorInjTUSD + valorInjTE) ───
-const economiaPorMes = computed(() => {
-  const a = doze();
-  lRelatorios.value.filter(r => r.ano == refAno.value).forEach(r => {
-    a[r.mes - 1] += (parseInt(r.valorInjTUSD) || 0) + (parseInt(r.valorInjTE) || 0);
-  });
-  return a;
-});
-const economiaAno = computed(() => economiaPorMes.value.reduce((s, v) => s + v, 0));
+// ─── Card Economia compensada (valorInjTUSD + valorInjTE), por ano ───
+const economiaPorMes = computed(() => ecoMes(anoEco.value));
+const economiaAno    = computed(() => economiaPorMes.value.reduce((s, v) => s + v, 0));
 const economiaBarras = computed(() => alturas(economiaPorMes.value, Math.max(...economiaPorMes.value)));
 const melhorMes = computed(() => {
   const v = economiaPorMes.value;
   const i = v.indexOf(Math.max(...v));
   return v[i] > 0 ? `${MESES_LONGO[i]} · ${brlCurto(v[i])}` : '—';
 });
-// injeção + autoconsumo (custo evitado), somado mês a mês até o mês de referência
-const economiaGeradaAno = computed(() => {
-  let t = 0;
-  for (let m = 1; m <= refMes.value; m++) t += somarEconomiaPorMesAno(refAno.value, m) + calcularCustoAutoconsumoMes(refAno.value, m);
-  return t;
-});
 const faturasCompensadas = computed(() =>
-  lRelatorios.value.filter(r => r.ano == refAno.value && ((Number(r.valorInjTUSD) || 0) + (Number(r.valorInjTE) || 0)) > 0).length,
+  lRelatorios.value.filter(r => r.ano == anoEco.value && (num(r.valorInjTUSD) + num(r.valorInjTE)) > 0).length,
 );
-const payback = computed(() => (totalInvestido > 0 ? `${numero((totalCompensaSoma.value / totalInvestido) * 100, 0)}%` : '—'));
+const ecoHover = ref(-1);
+
+// ─── Compensação do mês vigente (último mês com fatura compensada) ───
+const refComp = computed(() => {
+  let best = null;
+  lRelatorios.value.forEach(r => {
+    const tem = num(r.valorInjTUSD) + num(r.valorInjTE) + num(r.enerInjTUSD) + num(r.enerInjTE);
+    if (!tem || !r.ano || !r.mes) return;
+    const a = Number(r.ano), m = Number(r.mes);
+    if (!best || a > best.ano || (a === best.ano && m > best.mes)) best = { ano: a, mes: m };
+  });
+  return best ?? referencia.value;
+});
+const MRC = computed(() => mmaaaa(refComp.value));
+const compMesRef = computed(() => {
+  const { ano, mes } = refComp.value;
+  return lRelatorios.value
+    .filter(r => r.ano == ano && r.mes == mes)
+    .reduce((acc, r) => ({
+      valor: acc.valor + num(r.valorInjTUSD) + num(r.valorInjTE),
+      energia: acc.energia + num(r.enerInjTUSD) + num(r.enerInjTE),
+    }), { valor: 0, energia: 0 });
+});
+
+// ─── Payback acumulado (mesma regra do relatório Conclusivo) ───
+// custo evitado do mês = economia injetada (TUSD+TE) + autoconsumo das usinas;
+// soma de todos os meses até o mês de referência ÷ total investido.
+const TARIFA_BT = 0.88;
+const MT_TARIFAS = { TUSD_ponta: 1.66642019, TE_ponta: 0.57222160, TUSD_forap: 0.14734841, TE_forap: 0.34908095 };
+const TARIFA_MT = ((MT_TARIFAS.TUSD_forap + MT_TARIFAS.TE_forap) + (MT_TARIFAS.TUSD_ponta + MT_TARIFAS.TE_ponta)) / 2;
+const tarifaUsina = (u) => ((u.tensao || '').toUpperCase() === 'BT' ? TARIFA_BT : TARIFA_MT);
+const economiaAteRef = computed(() => {
+  const gera = new Map();
+  lGeracoes.value.forEach(g => { const k = `${g.idGeradora}|${g.ano}|${g.mes}`; if (!gera.has(k)) gera.set(k, num(g.geracao)); });
+  const inje = new Map();
+  lInjecoes.value.forEach(r => { const k = `${r.idGeradora}|${r.ano}|${r.mes}`; inje.set(k, (inje.get(k) || 0) + num(r.injetadoFPonta) + num(r.injetadoPonta)); });
+  const eco = new Map();
+  lRelatorios.value.forEach(r => { const k = `${r.ano}|${r.mes}`; eco.set(k, (eco.get(k) || 0) + num(r.valorInjTUSD) + num(r.valorInjTE)); });
+  const normais = lUsinas.value.filter(u => u.id !== 19 && u.id !== 20);
+  const excecao = lUsinas.value.filter(u => u.id === 19 || u.id === 20);
+  const chaves = new Set([...lGeracoes.value.map(g => `${g.ano}|${g.mes}`), ...lInjecoes.value.map(r => `${r.ano}|${r.mes}`)]);
+  let total = 0;
+  chaves.forEach(ch => {
+    const [ano, mes] = ch.split('|').map(Number);
+    if (!(ano < refAno.value || (ano === refAno.value && mes <= refMes.value))) return;
+    let auto = 0;
+    normais.forEach(u => {
+      const k = `${u.id}|${ano}|${mes}`;
+      auto += Math.max(0, (gera.get(k) || 0) - (inje.get(k) || 0)) * tarifaUsina(u);
+    });
+    excecao.forEach(u => { auto += Math.max(0, gera.get(`${u.id}|${ano}|${mes}`) || 0) * tarifaUsina(u); });
+    total += Number((auto + (eco.get(ch) || 0)).toFixed(2));
+  });
+  return total;
+});
+const paybackPct = computed(() => (totalInvestido > 0 ? (economiaAteRef.value / totalInvestido) * 100 : null));
 
 // ─── Usinas ───
 const usinasLigadas    = computed(() => lUsinas.value.filter(u => u.status === 'L').length);
@@ -131,10 +184,9 @@ const usinasDesligadas = computed(() => lUsinas.value.filter(u => u.status === '
 const usinasManutencao = computed(() => lUsinas.value.filter(u => u.status === 'M').length);
 const potenciaKwp = computed(() => lUsinas.value.reduce((s, u) => s + (parseFloat(u.potencia) || 0), 0));
 const potenciaTxt = computed(() => (potenciaKwp.value >= 1000 ? `${numero(potenciaKwp.value / 1000, 2)} MWp` : `${numero(potenciaKwp.value, 0)} kWp`));
+const nomeUsina = (id) => lUsinas.value.find(u => u.id == id)?.nome ?? `Usina #${id}`;
 
 // ─── Monitoramento (regra do Irregular: 3+ meses abaixo da projeção) ───
-// Janela: 12 meses terminando no mês de referência. Status do Checklist do
-// mês corrente, mesma classificação da página /checklist.
 const STATUS_CHECK = { O: 'Ótimo', B: 'Bom', R: 'Ruim', Q: 'Quebrado', M: 'Manutenção' };
 function statusChecklist(idUsina) {
   const hoje = new Date();
@@ -150,29 +202,29 @@ function statusChecklist(idUsina) {
   if (cont['Bom'] === 3 || (cont['Bom'] === 2 && cont['Ótimo'] === 1)) return { txt: 'Bom', cor: 'var(--teal)' };
   return { txt: 'Verificar', cor: 'var(--orange)' };
 }
+const projPorUsinaMes = computed(() => {
+  const m = {};
+  lProjecoes.value.forEach(p => { const k = `${p.idGeradora}-${p.ano}-${p.mes}`; m[k] = (m[k] || 0) + (parseInt(p.projecao) || 0); });
+  return m;
+});
 const alertas = computed(() => {
   const chave = (a, m) => a * 12 + (m - 1);
   const fim = chave(refAno.value, refMes.value);
   const ini = fim - 11;
-  const proj = {};
-  lProjecoes.value.forEach(p => { proj[`${p.idGeradora}-${p.ano}-${p.mes}`] = (proj[`${p.idGeradora}-${p.ano}-${p.mes}`] || 0) + (parseInt(p.projecao) || 0); });
   const abaixo = {};
   lGeracoes.value.forEach(g => {
     const k = chave(g.ano, g.mes);
     if (k < ini || k > fim) return;
-    const p = proj[`${g.idGeradora}-${g.ano}-${g.mes}`];
+    const p = projPorUsinaMes.value[`${g.idGeradora}-${g.ano}-${g.mes}`];
     if (p && (parseInt(g.geracao) || 0) < p) abaixo[g.idGeradora] = (abaixo[g.idGeradora] || 0) + 1;
   });
   return Object.entries(abaixo)
     .filter(([, qtd]) => qtd >= 3)
-    .map(([id, qtd]) => {
-      const u = lUsinas.value.find(x => x.id == id);
-      return { id, nome: u?.nome ?? `Usina #${id}`, qtd, status: statusChecklist(id) };
-    })
+    .map(([id, qtd]) => ({ id, nome: nomeUsina(id), qtd, status: statusChecklist(id) }))
     .sort((a, b) => b.qtd - a.qtd);
 });
 
-// ─── Manutenções (status 1 programada · 2 em andamento · 3 realizada) ───
+// ─── Manutenções ───
 const manut = computed(() => ({
   programadas: lManutencoes.value.filter(m => m.status === '1').length,
   andamento:   lManutencoes.value.filter(m => m.status === '2').length,
@@ -180,14 +232,17 @@ const manut = computed(() => ({
 }));
 
 // ─── Caminho da energia (acumulado) ───
-const compensadoPor = (siglas) => {
-  const ids = new Set(lUnidades.value.filter(u => siglas.includes(u.secretaria)).map(u => u.id));
-  return lRelatorios.value.filter(r => ids.has(r.idUnidadeCompensa)).reduce((s, r) => s + (Number(r.enerInjTUSD) || 0), 0);
-};
-const compensadoPredios = computed(() => compensadoPor(['E', 'S', 'O']));
-const compensadoIP      = computed(() => compensadoPor(['I', 'P']));
+const grupoUnidade = computed(() => {
+  const g = {};
+  lUnidades.value.forEach(u => { g[u.id] = ['E', 'S', 'O'].includes(u.secretaria) ? 'p' : ['I', 'P'].includes(u.secretaria) ? 'ip' : 'o'; });
+  return g;
+});
+const compensadoPor = (grupo) =>
+  lRelatorios.value.filter(r => grupoUnidade.value[r.idUnidadeCompensa] === grupo).reduce((s, r) => s + num(r.enerInjTUSD), 0);
+const compensadoPredios = computed(() => compensadoPor('p'));
+const compensadoIP      = computed(() => compensadoPor('ip'));
 
-// ─── Cards laterais (abre/fecha) ───
+// ─── Cards laterais ───
 const abertos = ref(new Set(['usinas']));
 const alternar = (id) => {
   const s = new Set(abertos.value);
@@ -195,53 +250,79 @@ const alternar = (id) => {
   abertos.value = s;
 };
 
-// ─── Modal de gráficos ───
+// ─── Modal de análise ───
 const modal = ref(false);
-const graficoMeses = computed(() => {
-  const max = Math.max(1, ...projPorMes.value, ...realPorMes.value);
-  return MESES_LETRA.map((m, i) => ({
-    x: 14 + i * 28, m,
-    hp: (projPorMes.value[i] / max) * 150,
-    hr: (realPorMes.value[i] / max) * 150,
-  }));
-});
-const CORES = ['#ffa12e', '#22c5e0', '#34d37a', '#a855f7', '#ff6b4a'];
-const participacao = computed(() => {
-  const por = {};
-  lGeracoes.value.filter(g => g.ano == refAno.value).forEach(g => { por[g.idGeradora] = (por[g.idGeradora] || 0) + (parseInt(g.geracao) || 0); });
-  const total = Object.values(por).reduce((s, v) => s + v, 0);
-  if (!total) return [];
-  const lista = Object.entries(por)
-    .map(([id, v]) => ({ nome: lUsinas.value.find(u => u.id == id)?.nome ?? `Usina #${id}`, v }))
-    .sort((a, b) => b.v - a.v);
-  const top = lista.slice(0, 4);
-  const resto = lista.slice(4).reduce((s, x) => s + x.v, 0);
-  if (resto > 0) top.push({ nome: 'Demais', v: resto });
-  let acc = 0;
-  return top.map((x, i) => {
-    const pct = (x.v / total) * 100;
-    const a0 = (acc / 100) * 2 * Math.PI - Math.PI / 2;
-    acc += pct;
-    const a1 = (acc / 100) * 2 * Math.PI - Math.PI / 2;
-    const p = (a) => `${(80 * Math.cos(a)).toFixed(2)} ${(80 * Math.sin(a)).toFixed(2)}`;
-    return {
-      nome: x.nome.length > 18 ? x.nome.slice(0, 17) + '…' : x.nome,
-      pct: numero(pct, 0), cor: CORES[i], cheio: pct >= 99.99,
-      d: `M${p(a0)} A80 80 0 ${pct > 50 ? 1 : 0} 1 ${p(a1)}`,
-    };
+const corEfic = (p) => (p == null ? 'var(--mut)' : p >= 90 ? 'var(--green)' : p >= 70 ? 'var(--orange)' : 'var(--red)');
+const rotuloEfic = (p) => (p == null ? 'Sem projeção' : p >= 90 ? 'Excelente' : p >= 70 ? 'Bom' : 'Abaixo');
+const analise = computed(() => {
+  const ano = anoGraf.value;
+  const proj = projMes(ano), real = realMes(ano), eco = ecoMes(ano);
+  const cp = doze(), ci = doze(), co = doze();
+  lRelatorios.value.forEach(r => {
+    if (r.ano != ano || r.mes < 1 || r.mes > 12) return;
+    const e = num(r.enerInjTUSD) + num(r.enerInjTE);
+    const g = grupoUnidade.value[r.idUnidadeCompensa] ?? 'o';
+    (g === 'p' ? cp : g === 'ip' ? ci : co)[r.mes - 1] += e;
   });
+
+  const meses = MESES_CURTO.map((m, i) => {
+    const efic = proj[i] > 0 && real[i] > 0 ? (real[i] / proj[i]) * 100 : null;
+    return { i, m, proj: proj[i], real: real[i], efic, delta: efic != null ? efic - 100 : null, eco: eco[i], cp: cp[i], ci: ci[i], co: co[i], comp: cp[i] + ci[i] + co[i] };
+  });
+  const comDado = meses.filter(x => x.real > 0);
+  const realTot = comDado.reduce((s, x) => s + x.real, 0);
+  const projComDado = comDado.reduce((s, x) => s + x.proj, 0);
+  const projTot = proj.reduce((s, v) => s + v, 0);
+  const comEfic = meses.filter(x => x.efic != null);
+  const melhorG = comEfic.length ? comEfic.reduce((a, b) => (b.efic > a.efic ? b : a)) : null;
+  const piorG = comEfic.length ? comEfic.reduce((a, b) => (b.efic < a.efic ? b : a)) : null;
+  const abaixo = comEfic.filter(x => x.efic < 100).length;
+
+  const comEco = meses.filter(x => x.eco > 0);
+  const ecoTot = comEco.reduce((s, x) => s + x.eco, 0);
+  const melhorE = comEco.length ? comEco.reduce((a, b) => (b.eco > a.eco ? b : a)) : null;
+  const piorE = comEco.length ? comEco.reduce((a, b) => (b.eco < a.eco ? b : a)) : null;
+
+  const compTot = meses.reduce((s, x) => s + x.comp, 0);
+  const cpTot = cp.reduce((s, v) => s + v, 0), ciTot = ci.reduce((s, v) => s + v, 0), coTot = co.reduce((s, v) => s + v, 0);
+
+  // desempenho por usina no ano
+  const porUsina = {};
+  lGeracoes.value.forEach(g => {
+    if (g.ano != ano) return;
+    const u = (porUsina[g.idGeradora] ??= { real: 0, proj: 0, meses: 0, abaixo: 0 });
+    const r = parseInt(g.geracao) || 0, p = projPorUsinaMes.value[`${g.idGeradora}-${g.ano}-${g.mes}`] || 0;
+    u.real += r;
+    if (r > 0) { u.meses++; u.proj += p; if (p && r < p) u.abaixo++; }
+  });
+  const usinasRank = Object.entries(porUsina)
+    .map(([id, u]) => ({ id, nome: nomeUsina(id), ...u, part: realTot > 0 ? (u.real / realTot) * 100 : 0, efic: u.proj > 0 ? (u.real / u.proj) * 100 : null }))
+    .sort((a, b) => b.real - a.real);
+
+  return {
+    meses, realTot, projTot, projComDado, ecoTot, compTot, cpTot, ciTot, coTot,
+    efic: projComDado > 0 ? (realTot / projComDado) * 100 : null,
+    nMeses: comDado.length, melhorG, piorG, abaixo, nEfic: comEfic.length,
+    ecoMedia: comEco.length ? ecoTot / comEco.length : 0, melhorE, piorE,
+    maxGer: Math.max(1, ...proj, ...real),
+    maxEco: Math.max(1, ...eco),
+    maxComp: Math.max(1, ...meses.map(x => x.comp)),
+    usinasRank, maxUsina: Math.max(1, ...usinasRank.map(u => u.real)),
+  };
 });
 const porAno = computed(() => {
   const por = {};
   lGeracoes.value.forEach(g => { if (g.ano) por[g.ano] = (por[g.ano] || 0) + (parseInt(g.geracao) || 0); });
   const anos = Object.keys(por).sort();
   const max = Math.max(1, ...Object.values(por));
-  const passo = anos.length > 1 ? 300 / (anos.length - 1) : 0;
-  const pts = anos.map((a, i) => ({ ano: a, x: 30 + i * passo, y: 150 - (por[a] / max) * 120, v: mwh(por[a]) }));
-  return { pts, d: pts.length ? 'M' + pts.map(p => `${p.x} ${p.y}`).join(' L') : '' };
+  return anos.map((a, i) => {
+    const ant = i > 0 ? por[anos[i - 1]] : null;
+    return { ano: a, v: por[a], h: alt(por[a], max), yoy: ant ? ((por[a] - ant) / ant) * 100 : null };
+  });
 });
+const tipLado = (i) => (i < 2 ? 'l' : i > 9 ? 'r' : '');
 
-// ─── Dock de navegação (mesmos grupos do menu lateral) ───
+// ─── Dock de navegação ───
 const NAV = [
   { n: 'Início', i: '◉', a: '--teal', b: '--green', s: [] },
   { n: 'Fotovoltaico', i: '☀', a: '--orange', b: '--red', s: [['Usinas', '/usinas/'], ['Manutenções', '/manutencoes/'], ['Checklist', '/checklist/'], ['Gráficos', '/graficos/']] },
@@ -342,8 +423,8 @@ onBeforeUnmount(() => {
   <div class="lx">
     <main>
       <header class="top">
-        <div class="badge"><img src="https://i.imgur.com/gHxwN0V.png" alt="LUCENTIS"></div>
-        <p>Início · visão geral da operação solar</p>
+        <div class="badge"><img src="https://i.imgur.com/gMx96Fc.png" alt="LUCENTIS"></div>
+        <p>Visão geral da operação solar</p>
       </header>
 
       <section class="stage">
@@ -367,14 +448,26 @@ onBeforeUnmount(() => {
           <div class="card" :class="{ open: abertos.has('economia') }" style="--c:var(--green)">
             <button class="hd" :aria-expanded="abertos.has('economia')" @click="alternar('economia')">
               <span class="ic">$</span>
-              <div><strong>Economia compensada</strong><b>{{ brlCurto(economiaAno) }}</b><em>em {{ refAno }}</em></div>
+              <div><strong>Economia compensada</strong><b>{{ brlCurto(economiaAno) }}</b><em>em {{ anoEco }}</em></div>
               <span class="chev">▾</span>
             </button>
             <div class="dd"><div><div class="in">
-              <div class="sp"><i v-for="(h, i) in economiaBarras" :key="i" :style="{ height: h + '%', animationDelay: i * 60 + 'ms' }" :title="`${MESES_CURTO[i]}: ${brlCurto(economiaPorMes[i])}`"></i></div>
+              <div class="anos" role="group" aria-label="Ano da economia">
+                <button v-for="a in ANOS" :key="a" class="ano" :class="{ on: anoEco === a }" @click="anoEco = a; ecoHover = -1">{{ a }}</button>
+              </div>
+              <div class="tipline">
+                <template v-if="ecoHover >= 0"><span>{{ MESES_LONGO[ecoHover] }}/{{ anoEco }}</span><b>{{ moeda(economiaPorMes[ecoHover]) }}</b></template>
+                <span v-else>Passe o mouse nas barras para ver cada mês</span>
+              </div>
+              <div class="sp hov" @mouseleave="ecoHover = -1">
+                <i v-for="(h, i) in economiaBarras" :key="anoEco + '-' + i" tabindex="0"
+                  :class="{ act: ecoHover === i }" :style="{ height: h + '%', animationDelay: i * 60 + 'ms' }"
+                  :aria-label="`${MESES_LONGO[i]}: ${moeda(economiaPorMes[i])}`"
+                  @mouseenter="ecoHover = i" @focus="ecoHover = i" @blur="ecoHover = -1"></i>
+              </div>
+              <div class="spx"><span v-for="(m, i) in MESES_CURTO" :key="m" :class="{ act: ecoHover === i }">{{ m[0] }}</span></div>
+              <div class="row"><span>Total compensado no ano</span><b>{{ moeda(economiaAno) }}</b></div>
               <div class="row"><span>Melhor mês</span><b>{{ melhorMes }}</b></div>
-              <div class="row"><span>Economia compensada (injeção)</span><b>{{ brlCurto(economiaAno) }}</b></div>
-              <div class="row"><span>Economia gerada (injeção + autoconsumo)</span><b>{{ brlCurto(economiaGeradaAno) }}</b></div>
               <div class="row"><span>Faturas compensadas</span><b>{{ numero(faturasCompensadas) }}</b></div>
             </div></div></div>
           </div>
@@ -389,7 +482,7 @@ onBeforeUnmount(() => {
               <div class="sp">
                 <template v-for="(h, i) in geracaoBarras.real" :key="i">
                   <i class="p" :style="{ height: geracaoBarras.proj[i] + '%' }"></i>
-                  <i :style="{ height: h + '%', animationDelay: i * 60 + 'ms' }" :title="`${MESES_CURTO[i]}: ${mwh(realPorMes[i])}`"></i>
+                  <i :style="{ height: h + '%', animationDelay: i * 60 + 'ms' }" :title="`${MESES_CURTO[i]}: ${mwh(realPorMes[i])} de ${mwh(projPorMes[i])}`"></i>
                 </template>
               </div>
               <div class="row"><span>Projetada</span><b>{{ mwh(projMesRef) }}</b></div>
@@ -412,12 +505,18 @@ onBeforeUnmount(() => {
           <div class="btns">
             <button class="btn" style="--c1:var(--orange);--c2:#ff5f6d" @click="navigateTo('/painel')">Abrir painel</button>
             <button class="btn" style="--c1:var(--teal);--c2:var(--green)" @click="navigateTo('/mapa')">Abrir mapa</button>
-            <button class="btn" style="--c1:var(--purple);--c2:var(--teal)" @click="modal = true">Ver gráficos</button>
+            <button class="btn" style="--c1:var(--purple);--c2:var(--teal)" @click="anoGraf = anoVigente; modal = true">Ver gráficos</button>
           </div>
           <div class="kpis">
-            <div class="kpi" style="--c:var(--green)"><b>{{ brlCurto(economiaAno) }}</b><span>economia compensada em {{ refAno }}</span></div>
-            <div class="kpi" style="--c:var(--orange)"><b>{{ mwh(realMesRef) }}</b><span>gerados no mês ({{ MR }})</span></div>
-            <div class="kpi" style="--c:var(--purple)"><b>{{ payback }}</b><span>payback acumulado</span></div>
+            <div class="kpi" style="--c:var(--green)" :title="moeda(compMesRef.valor)">
+              <b>{{ brlCurto(compMesRef.valor) }}</b><span>compensados no mês ({{ MRC }})</span>
+            </div>
+            <div class="kpi" style="--c:var(--orange)" :title="`${numero(compMesRef.energia)} kWh (TUSD + TE)`">
+              <b>{{ mwh(compMesRef.energia) }}</b><span>compensados no mês ({{ MRC }})</span>
+            </div>
+            <div class="kpi" style="--c:var(--purple)" :title="`${moeda(economiaAteRef)} de ${moeda(totalInvestido)} investidos (até ${MR})`">
+              <b>{{ pctTxt(paybackPct, 2) }}</b><span>payback acumulado</span>
+            </div>
           </div>
         </div>
 
@@ -511,48 +610,171 @@ onBeforeUnmount(() => {
       </p>
     </main>
 
-    <!-- ── Modal de gráficos ── -->
-    <div class="modal" :class="{ on: modal }" role="dialog" aria-modal="true" aria-label="Gráficos" @click.self="modal = false">
+    <!-- ══════════ Modal de análise ══════════ -->
+    <div class="modal" :class="{ on: modal }" role="dialog" aria-modal="true" aria-label="Análise de dados" @click.self="modal = false">
       <div class="panel">
         <button class="x" aria-label="Fechar" @click="modal = false">×</button>
-        <strong style="font-size:18px">Gráficos do sistema · {{ refAno }}</strong>
+        <div class="phd">
+          <div>
+            <strong class="ptit">Análise de dados · {{ anoGraf }}</strong>
+            <p class="psub">Passe o mouse sobre as barras para ver os valores de cada mês.</p>
+          </div>
+          <div class="anos" role="group" aria-label="Ano da análise">
+            <button v-for="a in ANOS" :key="a" class="ano" :class="{ on: anoGraf === a }" @click="anoGraf = a">{{ a }}</button>
+          </div>
+        </div>
+
+        <!-- Indicadores do ano -->
+        <div class="stats">
+          <div class="st" style="--c:var(--teal)"><span>Geração real</span><b>{{ mwh(analise.realTot) }}</b><small>{{ analise.nMeses }} {{ analise.nMeses === 1 ? 'mês' : 'meses' }} com dado</small></div>
+          <div class="st" style="--c:var(--orange)"><span>Projeção (meses com dado)</span><b>{{ mwh(analise.projComDado) }}</b><small>ano inteiro: {{ mwh(analise.projTot) }}</small></div>
+          <div class="st" :style="{ '--c': corEfic(analise.efic) }"><span>Eficiência acumulada</span><b>{{ pctTxt(analise.efic) }}</b><small>{{ analise.abaixo }} de {{ analise.nEfic }} meses abaixo da projeção</small></div>
+          <div class="st" style="--c:var(--green)"><span>Economia compensada</span><b>{{ brlCurto(analise.ecoTot) }}</b><small>média {{ brlCurto(analise.ecoMedia) }}/mês</small></div>
+          <div class="st" style="--c:var(--purple)"><span>Energia compensada</span><b>{{ mwh(analise.compTot) }}</b><small>TUSD + TE</small></div>
+          <div class="st" style="--c:var(--red)"><span>Payback acumulado</span><b>{{ pctTxt(paybackPct, 2) }}</b><small>até {{ MR }} · {{ brlCurto(economiaAteRef) }}</small></div>
+        </div>
+
         <div class="charts">
-          <div class="ch">
-            <h3>Geração projetada e real, por mês</h3>
-            <svg viewBox="0 0 360 190">
-              <g v-for="g in graficoMeses" :key="g.x">
-                <rect :x="g.x" :y="160 - g.hp" width="10" :height="g.hp" fill="none" stroke="#ffa12e" rx="2" />
-                <rect :x="g.x + 11" :y="160 - g.hr" width="10" :height="g.hr" fill="#22c5e0" rx="2" />
-                <text :x="g.x + 10" y="178" fill="#9aa7cc" font-size="10" text-anchor="middle">{{ g.m }}</text>
-              </g>
-            </svg>
-            <div class="leg"><span><i style="border:1px solid #ffa12e"></i>Projetada</span><span><i style="background:#22c5e0"></i>Real</span></div>
+          <!-- 1. Geração projetada × real -->
+          <div class="ch wide">
+            <div class="chh">
+              <h3>Geração projetada × real, por mês (MWh)</h3>
+              <div class="leg"><span><i class="lp"></i>Projetada</span><span><i style="background:var(--teal)"></i>Real</span></div>
+            </div>
+            <div class="bc">
+              <div v-for="x in analise.meses" :key="x.i" class="bcol" tabindex="0">
+                <span class="bv">{{ x.real ? mwhNum(x.real) : '' }}</span>
+                <div class="bbars">
+                  <i class="b-proj" :style="{ height: alt(x.proj, analise.maxGer) }"></i>
+                  <i class="b-real" :style="{ height: alt(x.real, analise.maxGer), background: x.efic != null ? corEfic(x.efic) : 'var(--teal)' }"></i>
+                </div>
+                <span class="bl">{{ x.m }}</span>
+                <div class="btip" :class="tipLado(x.i)">
+                  <strong>{{ MESES_LONGO[x.i] }}/{{ anoGraf }}</strong>
+                  <div><span>Projetada</span><b>{{ mwh(x.proj) }}</b></div>
+                  <div><span>Real</span><b>{{ mwh(x.real) }}</b></div>
+                  <div><span>Eficiência</span><b :style="{ color: corEfic(x.efic) }">{{ pctTxt(x.efic) }}</b></div>
+                </div>
+              </div>
+            </div>
+            <p class="insight">
+              <template v-if="analise.melhorG">
+                Melhor mês: <b>{{ MESES_LONGO[analise.melhorG.i] }}</b> ({{ pctTxt(analise.melhorG.efic) }}) ·
+                Pior mês: <b>{{ MESES_LONGO[analise.piorG.i] }}</b> ({{ pctTxt(analise.piorG.efic) }}) ·
+                Barra real colorida pela eficiência: <b style="color:var(--green)">≥ 90%</b>, <b style="color:var(--orange)">70–90%</b>, <b style="color:var(--red)">&lt; 70%</b>
+              </template>
+              <template v-else>Sem geração registrada em {{ anoGraf }}.</template>
+            </p>
+            <div class="tblwrap">
+              <table class="tbl">
+                <thead><tr><th>Mês</th><th>Projetada</th><th>Real</th><th>Desvio</th><th>Eficiência</th><th>Economia</th><th>Compensado</th></tr></thead>
+                <tbody>
+                  <tr v-for="x in analise.meses" :key="x.i" :class="{ vazio: !x.real && !x.eco }">
+                    <td>{{ MESES_CURTO[x.i] }}</td>
+                    <td>{{ mwh(x.proj) }}</td>
+                    <td>{{ mwh(x.real) }}</td>
+                    <td :style="{ color: x.delta == null ? 'var(--mut)' : x.delta >= 0 ? 'var(--green)' : 'var(--red)' }">{{ x.delta == null ? '—' : (x.delta >= 0 ? '+' : '') + numero(x.delta, 1) + '%' }}</td>
+                    <td><span class="tag" :style="{ color: corEfic(x.efic) }">{{ pctTxt(x.efic) }}</span></td>
+                    <td>{{ brlCurto(x.eco) }}</td>
+                    <td>{{ mwh(x.comp) }}</td>
+                  </tr>
+                </tbody>
+                <tfoot>
+                  <tr><td>Total</td><td>{{ mwh(analise.projTot) }}</td><td>{{ mwh(analise.realTot) }}</td><td></td><td><span class="tag" :style="{ color: corEfic(analise.efic) }">{{ pctTxt(analise.efic) }}</span></td><td>{{ brlCurto(analise.ecoTot) }}</td><td>{{ mwh(analise.compTot) }}</td></tr>
+                </tfoot>
+              </table>
+            </div>
           </div>
+
+          <!-- 2. Economia compensada -->
           <div class="ch">
-            <h3>Participação de cada usina na geração</h3>
-            <svg viewBox="0 0 360 190">
-              <g transform="translate(95,95)">
-                <template v-for="u in participacao" :key="u.nome">
-                  <circle v-if="u.cheio" r="80" :stroke="u.cor" stroke-width="26" fill="none" />
-                  <path v-else :d="u.d" :stroke="u.cor" stroke-width="26" fill="none" />
-                </template>
-              </g>
-              <g v-for="(u, i) in participacao" :key="'l' + i">
-                <rect x="200" :y="40 + i * 26" width="12" height="12" rx="3" :fill="u.cor" />
-                <text x="220" :y="51 + i * 26" fill="#eef2ff" font-size="11">{{ u.nome }} · {{ u.pct }}%</text>
-              </g>
-              <text v-if="!participacao.length" x="180" y="95" fill="#9aa7cc" font-size="12" text-anchor="middle">Sem geração registrada em {{ refAno }}</text>
-            </svg>
+            <div class="chh"><h3>Economia compensada por mês (R$)</h3></div>
+            <div class="bc">
+              <div v-for="x in analise.meses" :key="x.i" class="bcol" tabindex="0">
+                <span class="bv">{{ x.eco ? brlK(x.eco) : '' }}</span>
+                <div class="bbars"><i class="b-one" style="--c:var(--green)" :style="{ height: alt(x.eco, analise.maxEco) }"></i></div>
+                <span class="bl">{{ x.m[0] }}</span>
+                <div class="btip" :class="tipLado(x.i)">
+                  <strong>{{ MESES_LONGO[x.i] }}/{{ anoGraf }}</strong>
+                  <div><span>Economia</span><b>{{ moeda(x.eco) }}</b></div>
+                  <div v-if="analise.ecoTot"><span>% do ano</span><b>{{ pctTxt((x.eco / analise.ecoTot) * 100) }}</b></div>
+                </div>
+              </div>
+            </div>
+            <div class="foot">
+              <div><span>Total</span><b>{{ moeda(analise.ecoTot) }}</b></div>
+              <div><span>Média mensal</span><b>{{ moeda(analise.ecoMedia) }}</b></div>
+              <div><span>Melhor mês</span><b>{{ analise.melhorE ? `${MESES_CURTO[analise.melhorE.i]} · ${brlCurto(analise.melhorE.eco)}` : '—' }}</b></div>
+              <div><span>Pior mês</span><b>{{ analise.piorE ? `${MESES_CURTO[analise.piorE.i]} · ${brlCurto(analise.piorE.eco)}` : '—' }}</b></div>
+            </div>
           </div>
-          <div class="ch" style="grid-column:1/-1">
-            <h3>Geração total por ano</h3>
-            <svg viewBox="0 0 360 180">
-              <path :d="porAno.d" stroke="#34d37a" stroke-width="3" fill="none" />
-              <g v-for="p in porAno.pts" :key="p.ano">
-                <circle :cx="p.x" :cy="p.y" r="5" fill="#34d37a"><title>{{ p.ano }}: {{ p.v }}</title></circle>
-                <text :x="p.x" y="172" fill="#9aa7cc" font-size="10" text-anchor="middle">{{ p.ano }}</text>
-              </g>
-            </svg>
+
+          <!-- 3. Energia compensada por destino -->
+          <div class="ch">
+            <div class="chh">
+              <h3>Energia compensada por mês (MWh)</h3>
+              <div class="leg"><span><i style="background:var(--green)"></i>Prédios</span><span><i style="background:var(--purple)"></i>IP</span><span v-if="analise.coTot"><i style="background:var(--mut)"></i>Outras</span></div>
+            </div>
+            <div class="bc">
+              <div v-for="x in analise.meses" :key="x.i" class="bcol" tabindex="0">
+                <span class="bv">{{ x.comp ? mwhNum(x.comp) : '' }}</span>
+                <div class="bbars">
+                  <div class="stack" :style="{ height: alt(x.comp, analise.maxComp) }">
+                    <i :style="{ flex: x.cp, background: 'var(--green)' }"></i>
+                    <i :style="{ flex: x.ci, background: 'var(--purple)' }"></i>
+                    <i :style="{ flex: x.co, background: 'var(--mut)' }"></i>
+                  </div>
+                </div>
+                <span class="bl">{{ x.m[0] }}</span>
+                <div class="btip" :class="tipLado(x.i)">
+                  <strong>{{ MESES_LONGO[x.i] }}/{{ anoGraf }}</strong>
+                  <div><span>Prédios</span><b>{{ mwh(x.cp) }}</b></div>
+                  <div><span>IP</span><b>{{ mwh(x.ci) }}</b></div>
+                  <div v-if="x.co"><span>Outras</span><b>{{ mwh(x.co) }}</b></div>
+                  <div><span>Total</span><b>{{ mwh(x.comp) }}</b></div>
+                </div>
+              </div>
+            </div>
+            <div class="foot">
+              <div><span>Total</span><b>{{ mwh(analise.compTot) }}</b></div>
+              <div><span>Prédios</span><b>{{ mwh(analise.cpTot) }} · {{ pctTxt(analise.compTot ? (analise.cpTot / analise.compTot) * 100 : null, 0) }}</b></div>
+              <div><span>Iluminação</span><b>{{ mwh(analise.ciTot) }} · {{ pctTxt(analise.compTot ? (analise.ciTot / analise.compTot) * 100 : null, 0) }}</b></div>
+              <div v-if="analise.coTot"><span>Outras</span><b>{{ mwh(analise.coTot) }}</b></div>
+            </div>
+          </div>
+
+          <!-- 4. Desempenho por usina -->
+          <div class="ch wide">
+            <div class="chh">
+              <h3>Desempenho por usina em {{ anoGraf }}</h3>
+              <span class="psub">Eficiência = real ÷ projeção, só nos meses com geração registrada</span>
+            </div>
+            <div v-if="analise.usinasRank.length" class="ur">
+              <div class="urh"><span>#</span><span>Usina</span><span>Geração real</span><span>Participação</span><span>Eficiência</span><span>Meses abaixo</span></div>
+              <div v-for="(u, k) in analise.usinasRank" :key="u.id" class="urr">
+                <span class="urk">{{ k + 1 }}</span>
+                <span class="urn" :title="u.nome">{{ u.nome }}</span>
+                <span class="urb"><i :style="{ width: alt(u.real, analise.maxUsina), background: corEfic(u.efic) }"></i><b>{{ mwh(u.real) }}</b></span>
+                <span>{{ pctTxt(u.part) }}</span>
+                <span><span class="tag" :style="{ color: corEfic(u.efic) }">{{ pctTxt(u.efic) }} · {{ rotuloEfic(u.efic) }}</span></span>
+                <span :style="{ color: u.abaixo >= 3 ? 'var(--red)' : 'var(--mut)' }">{{ u.abaixo }} de {{ u.meses }}</span>
+              </div>
+            </div>
+            <p v-else class="insight">Sem geração registrada em {{ anoGraf }}.</p>
+          </div>
+
+          <!-- 5. Geração por ano -->
+          <div class="ch wide">
+            <div class="chh"><h3>Geração total por ano (MWh) e variação anual</h3></div>
+            <div class="bc anual">
+              <div v-for="p in porAno" :key="p.ano" class="bcol" tabindex="0" :class="{ cur: p.ano == anoGraf }">
+                <span class="bv">{{ mwhNum(p.v) }}</span>
+                <div class="bbars"><i class="b-one" style="--c:var(--green)" :style="{ height: p.h }"></i></div>
+                <span class="bl">{{ p.ano }}</span>
+                <span class="yoy" :style="{ color: p.yoy == null ? 'var(--mut)' : p.yoy >= 0 ? 'var(--green)' : 'var(--red)' }">{{ p.yoy == null ? '—' : (p.yoy >= 0 ? '▲ ' : '▼ ') + numero(Math.abs(p.yoy), 1) + '%' }}</span>
+              </div>
+            </div>
+            <p class="insight">O ano em andamento é parcial: a variação compara com o ano anterior completo.</p>
           </div>
         </div>
       </div>
@@ -600,20 +822,21 @@ onBeforeUnmount(() => {
   --bg:#060a1a;--bg2:#0d1330;--card:rgba(255,255,255,.055);--line:rgba(255,255,255,.14);--tx:#eef2ff;--mut:#9aa7cc;
   --teal:#22c5e0;--green:#34d37a;--orange:#ffa12e;--purple:#a855f7;--red:#ff6b4a;
   color-scheme:dark;background:var(--bg);color:var(--tx);font-family:'Sora',system-ui,-apple-system,'Segoe UI',sans-serif;
-  min-height:100vh;overflow-x:hidden;
+  width:100%;min-height:100vh;overflow-x:hidden;
   padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
   background-image:radial-gradient(circle at 20% 10%,rgba(34,197,224,.13),transparent 40%),radial-gradient(circle at 85% 80%,rgba(168,85,247,.16),transparent 45%),linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);
   background-size:auto,auto,44px 44px,44px 44px;background-attachment:fixed;
 }
 .lx *{box-sizing:border-box;margin:0}
-main{max-width:1380px;margin:0 auto;padding:18px 18px 120px}
+main{width:100%;max-width:1380px;margin:0 auto;padding:18px 18px 120px}
 .top{display:flex;flex-direction:column;align-items:center;gap:6px;margin-bottom:4px}
 .badge{padding:2px 10px}
 .badge img{height:96px;display:block;filter:drop-shadow(0 0 18px rgba(34,197,224,.5)) drop-shadow(0 0 46px rgba(168,85,247,.4))}
 .top p{color:var(--mut);font-size:13px;letter-spacing:.02em}
-.stage{display:grid;grid-template-columns:1fr minmax(300px,520px) 1fr;gap:22px;align-items:start;margin-top:10px}
-.col{display:flex;flex-direction:column;gap:14px}
-.center{display:flex;flex-direction:column;align-items:center;gap:14px;position:sticky;top:10px}
+/* minmax(0,1fr): as laterais nunca crescem pelo conteúdo, então o centro fica centralizado */
+.stage{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,520px) minmax(0,1fr);gap:22px;align-items:start;margin-top:10px}
+.col{display:flex;flex-direction:column;gap:14px;min-width:0}
+.center{display:flex;flex-direction:column;align-items:center;gap:14px;position:sticky;top:10px;min-width:0}
 .orbwrap{position:relative;width:min(100%,520px);aspect-ratio:1}
 .orb{width:100%;height:100%;display:block;-webkit-mask-image:radial-gradient(circle,#000 52%,transparent 71%);mask-image:radial-gradient(circle,#000 52%,transparent 71%)}
 .orbtx{position:absolute;inset:0;display:grid;place-content:center;text-align:center;pointer-events:none;text-shadow:0 2px 24px rgba(0,0,0,.6)}
@@ -623,7 +846,7 @@ main{max-width:1380px;margin:0 auto;padding:18px 18px 120px}
 .btns{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:-34px;position:relative}
 .btn{font:600 14px 'Sora',system-ui,sans-serif;color:#fff;border:0;cursor:pointer;padding:12px 20px;border-radius:999px;background:linear-gradient(120deg,var(--c1),var(--c2));box-shadow:0 8px 28px -8px var(--c1);transition:transform .2s,box-shadow .2s}
 .btn:hover{transform:translateY(-2px);box-shadow:0 12px 34px -6px var(--c2)}
-.btn:focus-visible,.hd:focus-visible,.x:focus-visible{outline:2px solid #fff;outline-offset:3px}
+.btn:focus-visible,.hd:focus-visible,.x:focus-visible,.ano:focus-visible{outline:2px solid #fff;outline-offset:3px}
 .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;width:100%}
 .kpi{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:12px 10px;text-align:center;backdrop-filter:blur(10px)}
 .kpi b{display:block;font-size:clamp(17px,2.4vw,23px);color:var(--c)}
@@ -644,13 +867,26 @@ main{max-width:1380px;margin:0 auto;padding:18px 18px 120px}
 .dd>div{overflow:hidden}
 .in{padding:2px 18px 16px 20px;font-size:13px;color:var(--mut);display:grid;gap:9px}
 .row{display:flex;justify-content:space-between;gap:10px;border-bottom:1px dashed var(--line);padding-bottom:7px}
+.row>span{min-width:0}
 .row b{color:var(--tx);font-weight:600;text-align:right}
 .qtd{font-size:11px;opacity:.8}
 .tag{font-size:11.5px;padding:2px 9px;border-radius:99px;background:rgba(255,255,255,.08);white-space:nowrap}
 .sp{display:flex;align-items:flex-end;gap:4px;height:56px}
 .sp i{flex:1;background:linear-gradient(var(--c),transparent);border-radius:4px 4px 0 0;min-height:4px;animation:grow .9s ease both;transform-origin:bottom}
 .sp i.p{background:none;border:1px solid var(--c);border-bottom:0;animation:none}
+.sp.hov i{cursor:pointer;transition:filter .15s,opacity .15s;outline:none}
+.sp.hov:hover i:not(.act){opacity:.45}
+.sp.hov i.act{filter:brightness(1.35);box-shadow:0 0 14px -2px var(--c)}
+.spx{display:flex;gap:4px;margin-top:-4px}
+.spx span{flex:1;text-align:center;font-size:10px;color:var(--mut)}
+.spx span.act{color:var(--c);font-weight:700}
+.tipline{display:flex;justify-content:space-between;align-items:baseline;gap:8px;min-height:20px;font-size:12px}
+.tipline b{color:var(--c);font-size:14px}
 @keyframes grow{from{transform:scaleY(0)}}
+.anos{display:flex;flex-wrap:wrap;gap:6px}
+.ano{all:unset;cursor:pointer;font:600 11.5px 'Sora',system-ui,sans-serif;padding:5px 10px;border-radius:99px;border:1px solid var(--line);color:var(--mut);background:rgba(255,255,255,.04);transition:background .2s,color .2s}
+.ano:hover{color:#fff;background:rgba(255,255,255,.1)}
+.ano.on{color:#06101a;background:var(--c,var(--teal));border-color:transparent}
 .flow{margin-top:22px;background:var(--card);border:1px solid var(--line);border-radius:22px;padding:14px 10px 8px;backdrop-filter:blur(10px)}
 .flow h2{font-size:14px;font-weight:600;padding:0 12px 4px}
 .flow svg{width:100%;height:auto;display:block}
@@ -658,17 +894,78 @@ main{max-width:1380px;margin:0 auto;padding:18px 18px 120px}
 .flow .s{fill:var(--mut);font-weight:400;font-size:11.5px}
 .note{max-width:640px;margin:18px auto 0;text-align:center;color:var(--mut);font-size:12px;line-height:1.6}
 .note strong{color:var(--green)}
-.modal{position:fixed;inset:0;background:rgba(3,6,18,.78);backdrop-filter:blur(8px);display:none;place-items:center;padding:16px;z-index:20}
+
+/* ── Modal de análise ── */
+.modal{position:fixed;inset:0;background:rgba(3,6,18,.8);backdrop-filter:blur(8px);display:none;place-items:center;padding:16px;z-index:30}
 .modal.on{display:grid}
-.panel{background:var(--bg2);border:1px solid var(--line);border-radius:24px;width:min(980px,100%);max-height:92vh;overflow:auto;padding:22px;position:relative}
-.x{position:absolute;right:14px;top:12px;background:none;border:0;color:var(--tx);font-size:26px;cursor:pointer}
-.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:12px}
-.ch{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px}
-.ch h3{font-size:13px;font-weight:600;margin-bottom:8px}
-.ch svg{width:100%;height:auto}
+.panel{background:var(--bg2);border:1px solid var(--line);border-radius:24px;width:min(1180px,100%);max-height:92vh;overflow:auto;padding:22px;position:relative}
+.x{position:absolute;right:14px;top:10px;background:none;border:0;color:var(--tx);font-size:26px;cursor:pointer}
+.phd{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap;padding-right:30px}
+.phd .anos{--c:var(--purple)}
+.ptit{font-size:19px;font-weight:700}
+.psub{font-size:12px;color:var(--mut);margin-top:3px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:16px}
+.st{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px 14px;border-top:2px solid var(--c);display:flex;flex-direction:column;gap:3px}
+.st span{font-size:11.5px;color:var(--mut)}
+.st b{font-size:20px;font-weight:700;color:var(--c)}
+.st small{font-size:11px;color:var(--mut)}
+.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:16px;margin-top:16px}
+.ch{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;min-width:0}
+.ch.wide{grid-column:1/-1}
+.chh{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.ch h3{font-size:14px;font-weight:600}
 .leg{display:flex;gap:14px;font-size:11.5px;color:var(--mut)}
 .leg span{display:flex;align-items:center;gap:6px}
 .leg i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.leg i.lp{border:1px dashed var(--orange)}
+.bc{display:flex;align-items:stretch;gap:6px;height:220px;padding-top:4px}
+.bc.anual{height:200px;max-width:720px}
+.bcol{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;position:relative;border-radius:8px;outline:none;padding:0 1px}
+.bcol:hover,.bcol:focus-visible,.bcol.cur{background:rgba(255,255,255,.05)}
+.bv{font-size:10.5px;color:var(--tx);height:16px;white-space:nowrap;font-weight:600}
+.bbars{flex:1;width:100%;display:flex;align-items:flex-end;justify-content:center;gap:2px}
+.stack{display:flex;flex-direction:column-reverse;gap:1px;width:64%;max-width:56px}
+.stack i{width:100%;min-height:0;border-radius:2px}
+.stack i:last-child{border-radius:4px 4px 2px 2px}
+.b-proj{width:42%;border:1px dashed var(--orange);border-bottom:0;border-radius:4px 4px 0 0;background:rgba(255,161,46,.08)}
+.b-real{width:42%;border-radius:4px 4px 0 0}
+.b-one{width:64%;max-width:56px;border-radius:5px 5px 0 0;background:linear-gradient(var(--c),color-mix(in srgb,var(--c) 35%,transparent))}
+.bl{font-size:10.5px;color:var(--mut);margin-top:5px}
+.yoy{font-size:10.5px;font-weight:600;margin-top:2px}
+.btip{position:absolute;bottom:calc(100% - 10px);left:50%;transform:translate(-50%,6px);min-width:160px;background:#0b1030;border:1px solid var(--line);border-radius:12px;padding:9px 11px;font-size:11.5px;display:grid;gap:4px;opacity:0;pointer-events:none;transition:.18s;z-index:5;box-shadow:0 12px 30px -10px #000}
+.btip.l{left:0;transform:translate(0,6px)}
+.btip.r{left:auto;right:0;transform:translate(0,6px)}
+.bcol:hover .btip,.bcol:focus-visible .btip{opacity:1;transform:translate(-50%,0)}
+.bcol:hover .btip.l,.bcol:focus-visible .btip.l,.bcol:hover .btip.r,.bcol:focus-visible .btip.r{transform:translate(0,0)}
+.btip strong{font-size:12px;margin-bottom:2px}
+.btip div{display:flex;justify-content:space-between;gap:12px;color:var(--mut)}
+.btip b{color:var(--tx);white-space:nowrap}
+.insight{font-size:12px;color:var(--mut);margin-top:10px;line-height:1.6}
+.insight b{color:var(--tx)}
+.foot{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-top:12px}
+.foot div{display:flex;flex-direction:column;gap:2px;background:rgba(255,255,255,.035);border-radius:10px;padding:8px 10px}
+.foot span{font-size:11px;color:var(--mut)}
+.foot b{font-size:13px}
+.tblwrap{overflow-x:auto;margin-top:12px}
+.tbl{width:100%;border-collapse:collapse;font-size:12px;white-space:nowrap}
+.tbl th{text-align:right;font-weight:600;color:var(--mut);font-size:11px;padding:7px 10px;border-bottom:1px solid var(--line)}
+.tbl td{text-align:right;padding:6px 10px;border-bottom:1px dashed rgba(255,255,255,.07)}
+.tbl th:first-child,.tbl td:first-child{text-align:left}
+.tbl tbody tr:hover{background:rgba(255,255,255,.04)}
+.tbl tr.vazio td{color:rgba(154,167,204,.5)}
+.tbl tfoot td{font-weight:700;border-top:1px solid var(--line);border-bottom:0}
+.ur{display:grid;font-size:12px;overflow-x:auto}
+.urh,.urr{display:grid;grid-template-columns:28px minmax(140px,1.4fr) minmax(160px,2fr) 90px 150px 90px;gap:10px;align-items:center;padding:7px 4px;min-width:700px}
+.urh{color:var(--mut);font-size:11px;border-bottom:1px solid var(--line)}
+.urr{border-bottom:1px dashed rgba(255,255,255,.07)}
+.urr:hover{background:rgba(255,255,255,.04)}
+.urk{color:var(--mut)}
+.urn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.urb{display:flex;align-items:center;gap:8px}
+.urb i{height:10px;border-radius:5px;flex:none;min-width:2px}
+.urb b{white-space:nowrap;font-weight:600}
+
+/* ── Dock / perfil / clima ── */
 .dock{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));display:flex;gap:4px;padding:7px;border-radius:999px;background:rgba(10,15,40,.74);border:1px solid var(--line);backdrop-filter:blur(16px);z-index:15;box-shadow:0 16px 50px -14px #000}
 .nv{all:unset;cursor:pointer;display:flex;align-items:center;gap:9px;padding:5px 16px 5px 5px;border-radius:999px;color:var(--mut);font:600 13px 'Sora',system-ui,sans-serif;transition:background .25s,color .25s;white-space:nowrap}
 .nv:hover,.nv.on{background:rgba(255,255,255,.09);color:#fff}
@@ -683,7 +980,7 @@ main{max-width:1380px;margin:0 auto;padding:18px 18px 120px}
 .fly strong{display:block;font-size:14px;margin-bottom:10px}
 .chip{font:600 13px 'Sora',system-ui,sans-serif;border:1px solid var(--line);background:rgba(255,255,255,.07);color:#fff;border-radius:99px;padding:8px 14px;cursor:pointer;margin:3px;transition:background .2s}
 .chip:hover{background:linear-gradient(120deg,var(--c1),var(--c2))}
-.perfil{position:fixed;top:calc(14px + env(safe-area-inset-top,0px));right:68px;z-index:24;width:46px;height:46px;border-radius:50%;border:1px solid var(--line);background:rgba(10,15,40,.74);backdrop-filter:blur(12px);display:grid;place-items:center}
+.perfil{position:fixed;top:calc(14px + env(safe-area-inset-top,0px));right:68px;z-index:24;line-height:0}
 .bell{position:fixed;top:calc(14px + env(safe-area-inset-top,0px));right:14px;width:46px;height:46px;border-radius:50%;border:1px solid var(--line);background:rgba(10,15,40,.74);backdrop-filter:blur(12px);cursor:pointer;font-size:20px;z-index:24;color:#fff}
 .bell i{position:absolute;top:6px;right:6px;width:10px;height:10px;border-radius:50%;background:var(--pc,var(--green));box-shadow:0 0 10px var(--pc,var(--green))}
 .bell:focus-visible,.pc:focus-visible{outline:2px solid #fff;outline-offset:2px}
@@ -698,11 +995,13 @@ main{max-width:1380px;margin:0 auto;padding:18px 18px 120px}
 .gz{height:8px;background:rgba(255,255,255,.1);border-radius:9px;overflow:hidden}
 .gz i{display:block;height:100%;width:var(--w);background:linear-gradient(90deg,var(--pc),rgba(255,255,255,.55));border-radius:9px;transition:width 1s ease}
 .pf{margin-top:9px;font-size:12px;color:var(--mut)}
-@media(max-width:1000px){.stage{grid-template-columns:1fr 1fr}.center{grid-column:1/-1;order:-1;position:static}}
+@media(max-width:1000px){.stage{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.center{grid-column:1/-1;order:-1;position:static}}
 @media(max-width:640px){
   main{padding:18px 16px 120px}
-  .stage{grid-template-columns:1fr}.badge img{height:72px}
+  .stage{grid-template-columns:minmax(0,1fr)}.badge img{height:72px}
   .nv .lb{display:none}.nv{padding:5px}.nv.on{padding:5px 14px 5px 5px}.nv.on .lb{display:inline}
+  .panel{padding:16px}
+  .bc{gap:2px}.bv{font-size:9px}
 }
 @media(prefers-reduced-motion:reduce){.lx *{animation:none!important;transition:none!important}}
 </style>

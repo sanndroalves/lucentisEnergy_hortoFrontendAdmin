@@ -493,9 +493,6 @@ export function useMapaEnergia({ usinas, unidades, geracoes, injecoes, compensa 
     // adicionados para o Centro de Operações (pages/index.vue): consumo real
     // do mês de referência, já calculado internamente — só não estava exposto.
     consumoPredios, consumoMedioUsinas,
-    // expostos para a tela Início (pages/index.vue): economia por mês/ano
-    // (injeção) e custo evitado por autoconsumo, mesmas fórmulas de sempre.
-    somarEconomiaPorMesAno, calcularCustoAutoconsumoMes,
     indicadores,
   };
 }
