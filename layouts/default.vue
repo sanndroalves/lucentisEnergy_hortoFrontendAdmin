@@ -21,7 +21,7 @@ const { data: usuarioInfo } = await useFetch(`${API_BASE_URL}/usuarios/${idUsuar
 <template>
     <v-locale-provider >
         <!-- <v-app v-if="usuarioInfo.cargo === 'AD' || !usuarioInfo"> -->
-        <v-app>
+        <v-app class="lx-app">
             <LayoutFullMain/>
             <v-main>
                 <v-container fluid class="page-wrapper">
