@@ -9,12 +9,17 @@ const NAV = [
   { n: 'UCs Públicas', i: '✦', a: '--green', b: '--teal', s: [['Iluminação', '/iluminacao/'], ['Prédios', '/predios/']] },
 ];
 
-const route = useRoute();
+// Lê a rota direto do vue-router. O useRoute() do Nuxt, fora de uma página,
+// só é atualizado no evento 'page:finish' do <NuxtPage>; como o layout
+// default usa <RouterView />, ele ficava parado em "/" e o dock marcava
+// sempre "Início".
+const router = useRouter();
+const caminho = computed(() => router.currentRoute.value.path);
 const aberto = ref(-1);
 
 const norm = (p) => '/' + String(p).replace(/^\/+|\/+$/g, '');
 const rotaAtiva = (to) => {
-  const p = norm(route.path), t = norm(to);
+  const p = norm(caminho.value), t = norm(to);
   return t === '/' ? p === '/' : p === t || p.startsWith(t + '/');
 };
 const grupoAtivo = computed(() => NAV.findIndex(n => (n.to ? rotaAtiva(n.to) : n.s.some(s => rotaAtiva(s[1])))));
@@ -26,7 +31,7 @@ const clicar = (k) => {
 };
 const ir = (rota) => { aberto.value = -1; navigateTo(rota); };
 
-watch(() => route.path, () => { aberto.value = -1; });
+watch(caminho, () => { aberto.value = -1; });
 const tecla = (e) => { if (e.key === 'Escape') aberto.value = -1; };
 const fora = (e) => { if (aberto.value >= 0 && !e.target.closest?.('.lxd-dock, .lxd-fly')) aberto.value = -1; };
 onMounted(() => { addEventListener('keydown', tecla); addEventListener('pointerdown', fora); });

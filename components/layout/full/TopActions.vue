@@ -8,7 +8,8 @@ import { useEnergyFormat } from '~/composables/useEnergyFormat';
 
 defineProps({ marca: { type: Boolean, default: true } });
 
-const route = useRoute();
+// rota direto do vue-router (ver comentário em DockNav.vue)
+const router = useRouter();
 const { numero } = useEnergyFormat();
 const MESES_CURTO = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 const MESES_LONGO = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -64,7 +65,7 @@ function mostrarClima() {
 const alternarClima = () => (pushAberto.value ? (pushAberto.value = false) : mostrarClima());
 
 // recarrega a varredura ao trocar de página (respeita o cache de 5 min)
-watch(() => route.path, () => garantir());
+watch(() => router.currentRoute.value.path, () => garantir());
 
 onMounted(async () => {
   clima.carregar();
@@ -86,7 +87,7 @@ onBeforeUnmount(() => {
 
 <template>
   <NuxtLink v-if="marca" to="/" class="lxt-marca" aria-label="Ir para o Início">
-    <img src="https://i.imgur.com/gMx96Fc.png" alt="LUCENTIS">
+    <img src="https://i.imgur.com/qZ92wWu.png" alt="LUCENTIS">
   </NuxtLink>
 
   <div class="lxt-perfil"><LayoutFullVerticalHeaderProfileDD /></div>
