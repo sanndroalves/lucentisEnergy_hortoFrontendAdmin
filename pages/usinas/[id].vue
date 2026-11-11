@@ -14,12 +14,9 @@ definePageMeta({
   middleware: 'sidebase-auth'
 })
 
-    import { ref } from 'vue';
-    import UiParentCard from '@/components/shared/UiParentCard.vue';
-    import MonthlyEarning from "@/components/dashboard/MonthlyEarnings.vue";
-    import UsinaInjecao from "@/components/dashboard/UsinaInjecao.vue";
-
-    import { useRouter, useRoute } from 'vue-router';
+    import { ref, computed } from 'vue';
+    import { useRoute } from 'vue-router';
+    import { useEnergyFormat } from '~/composables/useEnergyFormat';
 
     const route = useRoute();
 
@@ -37,18 +34,18 @@ definePageMeta({
 
     const geracoes = ref([])
     const somaInjecao = ref(0)
-    const selectedYear = ref('2025');
+    const selectedYear = ref(String(new Date().getFullYear()));
 
-
-    const toggleYear = async () => {
-        const years = ['2023', '2024', '2025', '2026'];
-        const currentIndex = years.indexOf(selectedYear.value);
-        selectedYear.value = years[(currentIndex + 1) % years.length];
+    // Antes: "toggleYear" girava entre 2023-2026 e a página abria sem dados
+    // até o primeiro clique. Agora carrega o ano escolhido (e o ano vigente
+    // ao abrir a página).
+    const carregarAno = async (ano) => {
+        selectedYear.value = String(ano);
 
         const { data: proDetalhe } = await useFetch(`${API_BASE_URL}/projecaogeracao?idGeradora=${route.params.id}&ano=${selectedYear.value}`);
         const { data: geraDetalhe } = await useFetch(`${API_BASE_URL}/relatoriogeracao?idGeradora=${route.params.id}&ano=${selectedYear.value}`);
-        proDetalheAno.value = proDetalhe._value;
-        gerDetalheAno.value = geraDetalhe._value;
+        proDetalheAno.value = proDetalhe.value ?? [];
+        gerDetalheAno.value = geraDetalhe.value ?? [];
         gerDetalheAno.value.sort((a, b) => {
             // Se quiser considerar também o ano, use:
             const anoA = a.ano;
@@ -70,8 +67,8 @@ definePageMeta({
 
         /* PEGANDO AS INJEÇÕES */ 
         const { data: injecaoUsina } = await useFetch(`${API_BASE_URL}/relatoriousina?idGeradora=${route.params.id}&ano=${selectedYear.value}`);
-        injecaoUsinaAno.value = injecaoUsina._value;
-        
+        injecaoUsinaAno.value = injecaoUsina.value ?? [];
+
         injecoes.value = []
         for (let i=0; i<injecaoUsinaAno.value.length; i++){
             somaInjecao.value = Number(injecaoUsinaAno.value[i].injetadoFPonta) + Number(injecaoUsinaAno.value[i].injetadoPonta)
@@ -95,7 +92,7 @@ definePageMeta({
     const dialogGeraConfig2 = ref(false);
 
     const meses = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-    const anos = [2026,2025,2024, 2023];
+    const anos = [2028, 2027, 2026, 2025, 2024, 2023];
 
     /* ABRIR CAMPO DE ADICIONAR */
     const openDialogProjecao = () => {
@@ -189,7 +186,9 @@ definePageMeta({
             showErrorMesProjecao.value = false;
         }
       }
-      
+
+      // atualiza tabela/gráfico do ano exibido
+      if (showSuccessAlertProjecao.value) await carregarAno(selectedYear.value);
     }
 
     //EDITAR GERAÇÃO
@@ -962,9 +961,11 @@ definePageMeta({
 
     /* BAIXAR PDF */
     import html2pdf from 'html2pdf.js';
-    const baixarPDF = () => {
-        // Referência para os elementos 
-        const tituloElement = document.getElementById('OSPDF'); 
+    // id: 'OSPDF' (OS recém-programada) ou 'OSPDF2' (OS de uma manutenção da lista).
+    // Antes os dois diálogos usavam o mesmo id e podia sair a OS errada.
+    const baixarPDF = (id = 'OSPDF') => {
+        // Referência para os elementos
+        const tituloElement = document.getElementById(id);
         
         const tempContainer = document.createElement('div');
             
@@ -1254,1617 +1255,709 @@ definePageMeta({
         }
     }
 
-    const AlertManutencao = ref(false)
-    const verificarManutencao = (qtdReal, qtdProjecao) => {
-        if((qtdReal - qtdProjecao) >= 0){
-            AlertManutencao.value = false
-            return 'Ok'
-        }else{
-            AlertManutencao.value = true
-            return 'Abaixo'
-        }
+    // ═══════════ Visão do ano (layout novo) ═══════════
+    // Antes as tabelas eram montadas pela posição no array (se faltasse um
+    // mês, os valores "andavam" de coluna). Agora tudo é indexado pelo mês.
+    const { numero, moeda } = useEnergyFormat()
+    const MESES_CURTO = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+    const MESES_LONGO = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
+    const ANOS_SEL = [2023, 2024, 2025, 2026, 2027, 2028]
+    const anoSel = computed(() => Number(selectedYear.value))
+    const num = (v) => Number(v) || 0
+
+    const porMes = (lista, fn) => {
+        const a = Array(12).fill(null)
+        ;(Array.isArray(lista) ? lista : []).forEach(r => {
+            const m = Number(r.mes)
+            if (Number(r.ano) === anoSel.value && m >= 1 && m <= 12) a[m - 1] = (a[m - 1] ?? 0) + fn(r)
+        })
+        return a
     }
+    const projMes = computed(() => porMes(proDetalheAno.value, r => num(r.projecao)))
+    const realMes = computed(() => porMes(gerDetalheAno.value, r => num(r.geracao)))
+    const injMes  = computed(() => porMes(injecaoUsinaAno.value, r => num(r.injetadoPonta) + num(r.injetadoFPonta)))
+
+    // listas do ano exibido (diálogos "editar lançamentos")
+    const doAno = (lista) => (Array.isArray(lista) ? lista : []).filter(r => Number(r.ano) === anoSel.value).sort((a, b) => a.mes - b.mes)
+    const projAnoLista = computed(() => doAno(proDetalheAno.value))
+    const realAnoLista = computed(() => doAno(gerDetalheAno.value))
+    const injAnoLista  = computed(() => doAno(injecaoUsinaAno.value))
+
+    const mesesAno = computed(() => MESES_CURTO.map((m, i) => {
+        const p = projMes.value[i], r = realMes.value[i], inj = injMes.value[i]
+        const efic = p > 0 && r != null ? (r / p) * 100 : null
+        const auto = r != null && inj != null ? r - inj : null
+        const ant = i > 0 ? injMes.value[i - 1] : null
+        let tend = null
+        if (inj != null) tend = inj === 0 ? 'zero' : ant == null ? 'igual' : inj > ant ? 'sobe' : inj < ant ? 'desce' : 'igual'
+        return { i, m, p, r, inj, efic, auto, tend, abaixo: p > 0 && r != null && r < p }
+    }))
+    const resumoAno = computed(() => {
+        const ms = mesesAno.value
+        const comReal = ms.filter(x => x.r != null)
+        const realTot = comReal.reduce((s, x) => s + x.r, 0)
+        const projComDado = comReal.reduce((s, x) => s + (x.p ?? 0), 0)
+        return {
+            realTot,
+            projTot: ms.reduce((s, x) => s + (x.p ?? 0), 0),
+            projComDado,
+            efic: projComDado > 0 ? (realTot / projComDado) * 100 : null,
+            injTot: ms.reduce((s, x) => s + (x.inj ?? 0), 0),
+            autoTot: ms.reduce((s, x) => s + (x.auto ?? 0), 0),
+            nReal: comReal.length,
+            abaixo: ms.filter(x => x.abaixo).length,
+            maxGer: Math.max(1, ...ms.map(x => Math.max(x.p ?? 0, x.r ?? 0))),
+            maxInj: Math.max(1, ...ms.map(x => Math.max(x.inj ?? 0, x.auto ?? 0))),
+        }
+    })
+    const alt = (v, max) => `${max > 0 && v ? Math.max(2, (v / max) * 100) : 0}%`
+    const kwh = (v) => (v == null ? '—' : `${numero(v)} kWh`)
+    const mwhTxt = (v) => `${numero((v || 0) / 1000, (v || 0) >= 100000 ? 0 : 1)} MWh`
+    const pctTxt = (v) => (v == null || !isFinite(v) ? '—' : `${numero(v, 1)}%`)
+    const corEfic = (p) => (p == null ? 'var(--mut)' : p >= 90 ? 'var(--green)' : p >= 70 ? 'var(--orange)' : 'var(--red)')
+    const tipLado = (i) => (i < 2 ? 'l' : i > 9 ? 'r' : '')
+    const TEND = {
+        sobe:  { s: '▲', c: 'var(--green)',  t: 'Subiu em relação ao mês anterior' },
+        desce: { s: '▼', c: 'var(--red)',    t: 'Caiu em relação ao mês anterior' },
+        zero:  { s: '✕', c: 'var(--red)',    t: 'Sem injeção no mês' },
+        igual: { s: '=', c: 'var(--teal)',   t: 'Igual ao mês anterior' },
+    }
+
+    // alerta de geração (substitui o AlertManutencao, que era alterado durante a renderização)
+    const AlertManutencao = computed(() => resumoAno.value.abaixo > 0)
+
+    // ─── Cabeçalho / dados da usina ───
+    const STATUS_USINA = { L: { txt: 'Ligada', c: 'var(--green)' }, D: { txt: 'Desligada', c: 'var(--red)' }, M: { txt: 'Manutenção', c: 'var(--orange)' } }
+    const statusUsinaInfo = computed(() => STATUS_USINA[usinaDetalhe.value?.status] ?? { txt: 'Desconhecido', c: 'var(--mut)' })
+    const dataBR = (d) => {
+        if (!d) return '—'
+        const dt = new Date(/^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d}T00:00:00` : d)
+        return isNaN(dt) ? '—' : dt.toLocaleDateString('pt-BR')
+    }
+
+    // ─── Manutenções ───
+    const STATUS_MANU = { '1': 'var(--teal)', '2': 'var(--orange)', '3': 'var(--green)' }
+    const ultimaManu = computed(() => (ultima.value?.length ? ultima.value[ultima.value.length - 1] : null))
+    const diasProxima = computed(() => (programada.value?.length ? calcularDiasRestantes(programada.value[0].data) : null))
+
+    // ─── Unidades compensadas ───
+    const porcentagemDe = (idUnidade) => porcentagens.value?.find(p => p.idUnidadeCompensa === idUnidade)?.porcentagem ?? '—'
+    const relatoriosOrdenados = computed(() => [...(Array.isArray(relatoriosUnidade.value) ? relatoriosUnidade.value : [])]
+        .sort((a, b) => (b.ano - a.ano) || (b.mes - a.mes)))
+
+    await carregarAno(selectedYear.value)
 </script>
 <template>
-    <!-- BANNER -->
-    <v-row>
-    <div
-      class="v-card v-theme--BLUE_THEME v-card--density-default elevation-10 rounded-md v-card--variant-elevated bg-lightprimary elevation-0 rounded-md mb-8"
-    >
-      <div class="px-8 py-8 py-lg-0">
-        <div class="d-flex justify-space-between">
-          <div class="d-flex py-0 align-center">
-            <div>
-              <h3 class="text-h3 mb-2">Informações Individuais</h3>
-              <ul
-                class="v-breadcrumbs v-breadcrumbs--density-default text-h6 font-weight-medium pa-0 ml-n1"
-              >
-                <!---->
-                <li class="v-breadcrumbs-item" text="Dashboard">
-                  <a class="v-breadcrumbs-item--link" href="/" style="text-decoration:none"
-                    ><h6 class="text-medium-emphasis text-subtitle-1">
-                      Eficiência
-                    </h6></a
-                  >
-                </li>
-                <li class="v-breadcrumbs-divider">
-                  <div class="d-flex align-center text-h3 mt-n4">.</div>
-                </li>
-                <li class="v-breadcrumbs-item" text="Dashboard">
-                  <a class="v-breadcrumbs-item--link" href="/usinas" style="text-decoration:none"
-                    ><h6 class="text-medium-emphasis text-subtitle-1">
-                      Usinas
-                    </h6></a
-                  >
-                </li>
-                <li class="v-breadcrumbs-divider">
-                  <div class="d-flex align-center text-h3 mt-n4">.</div>
-                </li>
-                <li
-                  class="v-breadcrumbs-item v-breadcrumbs-item--disabled"
-                  text="Relatórios"
-                >
-                  <h6 class="text-medium-emphasis text-subtitle-1">{{ usinaDetalhe.nome}}</h6>
-                </li>
-                <!----><!---->
-              </ul>
-            </div>
+  <div class="lx-page">
+    <!-- ══════════ Cabeçalho ══════════ -->
+    <header class="lx-head">
+      <div>
+        <nav class="lx-crumb" aria-label="Você está em">
+          <NuxtLink to="/">Início</NuxtLink><span class="sep">›</span>
+          <NuxtLink to="/usinas/">Usinas</NuxtLink><span class="sep">›</span>
+          <b>{{ usinaDetalhe.nome }}</b>
+        </nav>
+        <h1 class="lx-title">{{ usinaDetalhe.nome }}</h1>
+        <div class="ud-tags">
+          <span class="lx-pill" :style="{ '--c': statusUsinaInfo.c }"><i></i>{{ statusUsinaInfo.txt }}</span>
+          <span class="lx-pill" style="--c:var(--teal)">UC <span class="lx-mono">{{ usinaDetalhe.uc }}</span></span>
+          <span v-if="usinaDetalhe.tensao" class="lx-pill" style="--c:var(--purple)">{{ usinaDetalhe.tensao }}</span>
+          <span v-if="usinaDetalhe.endereco" class="ud-end">{{ usinaDetalhe.endereco }}</span>
+        </div>
+      </div>
+      <div class="lx-head-actions">
+        <NuxtLink to="/usinas/" class="lx-btn-ghost">← Voltar</NuxtLink>
+        <button class="lx-btn-ghost danger" @click="openDialogExcluir">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+          Excluir usina
+        </button>
+      </div>
+    </header>
+
+    <div v-if="AlertManutencao" class="lx-alert warn">
+      Geração abaixo da projeção em {{ resumoAno.abaixo }} {{ resumoAno.abaixo === 1 ? 'mês' : 'meses' }} de {{ selectedYear }}. Talvez seja melhor adiantar a próxima manutenção programada.
+    </div>
+
+    <!-- ══════════ KPIs ══════════ -->
+    <section class="lx-kpis">
+      <div class="lx-kpi" style="--c:var(--orange)"><span class="ico">☀</span><span>Potência instalada</span><b>{{ numero(Number(usinaDetalhe.potencia) || 0, 2) }} <small>kWp</small></b><small>em operação desde {{ dataBR(usinaDetalhe.dataInicio) }}</small></div>
+      <div class="lx-kpi" style="--c:var(--teal)"><span class="ico">⚡</span><span>Geração real em {{ selectedYear }}</span><b>{{ mwhTxt(resumoAno.realTot) }}</b><small>{{ resumoAno.nReal }} {{ resumoAno.nReal === 1 ? 'mês' : 'meses' }} com dado</small></div>
+      <div class="lx-kpi" :style="{ '--c': corEfic(resumoAno.efic) }"><span class="ico">◎</span><span>Eficiência em {{ selectedYear }}</span><b>{{ pctTxt(resumoAno.efic) }}</b><small>real ÷ projetado (meses com dado)</small></div>
+      <div class="lx-kpi" style="--c:var(--purple)"><span class="ico">⇄</span><span>Injetado na rede</span><b>{{ mwhTxt(resumoAno.injTot) }}</b><small>autoconsumo {{ mwhTxt(resumoAno.autoTot) }}</small></div>
+      <div class="lx-kpi" style="--c:var(--green)"><span class="ico">▦</span><span>Unidades compensadas</span><b>{{ unidadesCompensadas.length }}</b><small>recebem créditos desta usina</small></div>
+    </section>
+
+    <!-- ══════════ Dados + Manutenções ══════════ -->
+    <section class="lx-grid g2 lx-mb">
+      <div class="lx-panel accent" style="--c:var(--orange)">
+        <div class="lx-panel-hd"><h3><span class="lx-ic" style="--c:var(--orange)">☀</span>Dados da usina</h3></div>
+        <div class="lx-dl">
+          <div><span>Nome</span><b>{{ usinaDetalhe.nome }}</b></div>
+          <div><span>UC</span><b class="lx-mono">{{ usinaDetalhe.uc }}</b></div>
+          <div><span>Endereço</span><b>{{ usinaDetalhe.endereco || '—' }}</b></div>
+          <div><span>Data de início</span><b>{{ dataBR(usinaDetalhe.dataInicio) }}</b></div>
+          <div><span>Potência</span><b>{{ numero(Number(usinaDetalhe.potencia) || 0, 2) }} kWp</b></div>
+          <div><span>Tensão</span><b>{{ usinaDetalhe.tensao || '—' }}</b></div>
+        </div>
+      </div>
+
+      <div class="lx-panel accent" style="--c:var(--purple)">
+        <div class="lx-panel-hd">
+          <h3><span class="lx-ic" style="--c:var(--purple)">⚙</span>Manutenções</h3>
+          <div class="lx-head-actions">
+            <button class="lx-btn-ghost sm" @click="verManutencoes">Ver todas ({{ manutencoes?.length ?? 0 }})</button>
+            <button class="lx-btn sm" style="--c1:var(--purple);--c2:var(--teal)" @click="programarManutencao">+ Programar</button>
           </div>
-          <div class="d-none py-0 d-lg-block overflow-hidden">
-            <div class="mb-n16 mt-3">
-              <img src="https://i.imgur.com/wBFBoIm.png" height="200" alt="breadcrumbw" />
-            </div>
+        </div>
+        <div class="ud-manu">
+          <div class="ud-manu-box" style="--c:var(--green)">
+            <span>Última realizada</span>
+            <b>{{ ultimaManu ? formatarData(ultimaManu.data) : 'Nenhuma' }}</b>
+            <small v-if="ultimaManu">próxima prevista em {{ calcularDataPrevista(ultimaManu.data) }}</small>
+          </div>
+          <div class="ud-manu-box" :style="{ '--c': diasProxima != null && diasProxima < 0 ? 'var(--red)' : 'var(--teal)' }">
+            <span>Programada</span>
+            <b v-if="programada?.length">{{ formatarData(programada[0].data) }}</b>
+            <b v-else>Nenhuma</b>
+            <small v-if="diasProxima != null">{{ diasProxima >= 0 ? `faltam ${diasProxima} dias` : `atrasada há ${Math.abs(diasProxima)} dias` }}</small>
+            <small v-if="programada?.length > 1">+{{ programada.length - 1 }} outra(s) programada(s)</small>
           </div>
         </div>
       </div>
-    </div>
-    </v-row>
+    </section>
 
-    <!-- DIVIDIR -->
-    <v-row>
-        <v-divider></v-divider>
-        <br>
-    </v-row>
+    <!-- ══════════ Geração ══════════ -->
+    <section class="lx-panel lx-mb">
+      <div class="lx-panel-hd">
+        <div>
+          <h3><span class="lx-ic" style="--c:var(--teal)">⚡</span>Geração projetada × real em {{ selectedYear }}</h3>
+          <p>Passe o mouse sobre as barras para ver os valores de cada mês</p>
+        </div>
+        <div class="lx-head-actions">
+          <div class="lx-anos" style="--c:var(--teal)" role="group" aria-label="Ano">
+            <button v-for="a in ANOS_SEL" :key="a" class="lx-ano" :class="{ on: anoSel === a }" @click="carregarAno(a)">{{ a }}</button>
+          </div>
+          <button class="lx-btn-ghost sm" @click="dialogGeraConfig2 = true">Editar lançamentos</button>
+          <button class="lx-btn sm" @click="openDialogProjecao">+ Lançar geração</button>
+        </div>
+      </div>
 
-    <!-- EXCLUIR USINA-->
-    <div class="text-center">
-        <v-dialog v-model="dialogExcluir"  persistent width="auto">
-            <v-card>
-                <v-card-text v-if="showSuccessAlertUsina">
-                   <v-alert type="success" title="Exclusão" text="Usina EXCLUÍDA com sucesso!"></v-alert> 
-                </v-card-text>
-                
-                <v-card-text v-if="!showSuccessAlertUsina">
-                    Você tem certeza que deseja excluir a usina?
-                </v-card-text>
-                <v-card-actions v-if="!showSuccessAlertUsina">
-                    <v-col cols="6" >
-                        <v-btn color="blue-darken-1" block @click="dialogExcluir = false">Fechar</v-btn>
-                    </v-col>
-                    <v-col cols="6" >
-                        <v-btn color="error" block @click="excluirUsina">Excluir</v-btn>
-                    </v-col>
-                </v-card-actions>    
-                <v-card-actions v-if="showSuccessAlertUsina">
-                    <v-btn color="succes" block href="/usinas">Fechar</v-btn>
-                </v-card-actions>
-            </v-card>
-        </v-dialog>
-    </div>
+      <div class="lx-leg ud-leg"><span><i style="border:1px dashed var(--orange)"></i>Projetada</span><span><i style="background:var(--green)"></i>Real ≥ 90%</span><span><i style="background:var(--orange)"></i>70–90%</span><span><i style="background:var(--red)"></i>&lt; 70%</span></div>
+      <div class="lx-bc">
+        <div v-for="x in mesesAno" :key="x.i" class="lx-bcol" tabindex="0">
+          <span class="lx-bv">{{ x.r != null ? numero(x.r / 1000, 1) : '' }}</span>
+          <div class="lx-bbars">
+            <i class="lx-b-proj" :style="{ height: alt(x.p, resumoAno.maxGer) }"></i>
+            <i class="lx-b-real" :style="{ height: alt(x.r, resumoAno.maxGer), background: x.efic != null ? corEfic(x.efic) : 'var(--teal)' }"></i>
+          </div>
+          <span class="lx-bl">{{ x.m }}</span>
+          <div class="lx-btip" :class="tipLado(x.i)">
+            <strong>{{ MESES_LONGO[x.i] }}/{{ selectedYear }}</strong>
+            <div><span>Projetada</span><b>{{ kwh(x.p) }}</b></div>
+            <div><span>Real</span><b>{{ kwh(x.r) }}</b></div>
+            <div><span>Eficiência</span><b :style="{ color: corEfic(x.efic) }">{{ pctTxt(x.efic) }}</b></div>
+          </div>
+        </div>
+      </div>
+      <p class="ud-nota">Valores acima das barras em MWh.</p>
 
-    <!-- CARD INFORMAÇÕES USINA E MANUTENÇÕES-->
-    <v-row>
-        <v-col v-if="AlertManutencao" cols="12">
-                            <v-alert type="warning">
-                                Gerações estão baixas. Talvez seja melhor adiantar a próxima manutenção programanda.
-                            </v-alert>
-                        </v-col>
-        <v-col cols="12" md="6">
-            <UiParentCard :title="'UC ' + usinaDetalhe.uc"> 
-                <div class="pa-7 pt-1">
-                    <v-row>
-                        <v-col cols="12">
-                            <div class="d-flex align-center">
-                                <h4 class="mr-2">Nome: </h4>
-                                {{ usinaDetalhe.nome }}
-                            </div>
-                        </v-col>
-                        <v-col cols="6">
-                            <div class="d-flex align-center">
-                                <h4 class="mr-2">Data de Início: </h4>
-                                {{ new Date(usinaDetalhe.dataInicio).toLocaleDateString('pt-BR') }}
-                            </div>
-                        </v-col>
-                        <v-col cols="6">
-                            <div class="d-flex align-center">
-                                <h4 class="mr-2">Potência: </h4>
-                                {{ usinaDetalhe.potencia }}
-                            </div>
-                        </v-col> 
-                        <v-col cols="12" class="text-center">
-                            <v-btn @click="openDialogExcluir" size="30" icon class="bg-error">
-                                <v-avatar size="30" class="text-white">
-                                    <TrashIcon size="17" />
-                                </v-avatar>
-                                <v-tooltip activator="parent" location="bottom">Excluir Usina</v-tooltip>
-                            </v-btn>
-                        </v-col>
-                    </v-row>
+      <div class="lx-tbl-wrap">
+        <table class="lx-tbl ud-mtbl">
+          <thead><tr><th>kWh</th><th v-for="m in MESES_CURTO" :key="m" class="r">{{ m }}</th><th class="r">Total</th></tr></thead>
+          <tbody>
+            <tr><td>Projetada</td><td v-for="x in mesesAno" :key="x.i" class="r">{{ x.p != null ? numero(x.p) : '—' }}</td><td class="r"><b>{{ numero(resumoAno.projTot) }}</b></td></tr>
+            <tr><td>Real</td><td v-for="x in mesesAno" :key="x.i" class="r">{{ x.r != null ? numero(x.r) : '—' }}</td><td class="r"><b>{{ numero(resumoAno.realTot) }}</b></td></tr>
+            <tr>
+              <td>Análise</td>
+              <td v-for="x in mesesAno" :key="x.i" class="r">
+                <span v-if="x.efic != null" class="lx-pill" :style="{ '--c': x.abaixo ? 'var(--red)' : 'var(--green)' }" :title="pctTxt(x.efic)">{{ x.abaixo ? 'Abaixo' : 'Ok' }}</span>
+                <span v-else class="ud-mut">—</span>
+              </td>
+              <td class="r"><span class="lx-pill" :style="{ '--c': corEfic(resumoAno.efic) }">{{ pctTxt(resumoAno.efic) }}</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ══════════ Injeção ══════════ -->
+    <section class="lx-panel lx-mb">
+      <div class="lx-panel-hd">
+        <div>
+          <h3><span class="lx-ic" style="--c:var(--purple)">⇄</span>Injeção na rede e autoconsumo em {{ selectedYear }}</h3>
+          <p>Autoconsumo = geração real − energia injetada</p>
+        </div>
+        <div class="lx-head-actions">
+          <button class="lx-btn-ghost sm" @click="openDialogInjecao2">Editar injeções</button>
+          <button class="lx-btn sm" style="--c1:var(--purple);--c2:var(--teal)" @click="openDialogInjecao">+ Lançar injeção</button>
+        </div>
+      </div>
+
+      <div class="lx-leg ud-leg"><span><i style="background:var(--purple)"></i>Injetado</span><span><i style="background:var(--teal)"></i>Autoconsumo</span></div>
+      <div class="lx-bc">
+        <div v-for="x in mesesAno" :key="x.i" class="lx-bcol" tabindex="0">
+          <span class="lx-bv">{{ x.inj != null ? numero(x.inj / 1000, 1) : '' }}</span>
+          <div class="lx-bbars">
+            <i class="lx-b-real" :style="{ height: alt(x.inj, resumoAno.maxInj), background: 'var(--purple)' }"></i>
+            <i class="lx-b-real" :style="{ height: alt(x.auto > 0 ? x.auto : 0, resumoAno.maxInj), background: 'var(--teal)' }"></i>
+          </div>
+          <span class="lx-bl">{{ x.m }}</span>
+          <div class="lx-btip" :class="tipLado(x.i)">
+            <strong>{{ MESES_LONGO[x.i] }}/{{ selectedYear }}</strong>
+            <div><span>Injetado</span><b>{{ kwh(x.inj) }}</b></div>
+            <div><span>Autoconsumo</span><b>{{ kwh(x.auto) }}</b></div>
+            <div v-if="x.tend"><span>Tendência</span><b :style="{ color: TEND[x.tend].c }">{{ TEND[x.tend].s }} {{ TEND[x.tend].t }}</b></div>
+          </div>
+        </div>
+      </div>
+      <p class="ud-nota">Valores acima das barras em MWh.</p>
+
+      <div class="lx-tbl-wrap">
+        <table class="lx-tbl ud-mtbl">
+          <thead><tr><th>kWh</th><th v-for="m in MESES_CURTO" :key="m" class="r">{{ m }}</th><th class="r">Total</th></tr></thead>
+          <tbody>
+            <tr><td>Autoconsumo</td><td v-for="x in mesesAno" :key="x.i" class="r">{{ x.auto != null ? numero(x.auto) : '—' }}</td><td class="r"><b>{{ numero(resumoAno.autoTot) }}</b></td></tr>
+            <tr><td>Injetado</td><td v-for="x in mesesAno" :key="x.i" class="r">{{ x.inj != null ? numero(x.inj) : '—' }}</td><td class="r"><b>{{ numero(resumoAno.injTot) }}</b></td></tr>
+            <tr>
+              <td>Tendência</td>
+              <td v-for="x in mesesAno" :key="x.i" class="r">
+                <span v-if="x.tend" class="ud-tend" :style="{ color: TEND[x.tend].c }" :title="TEND[x.tend].t">{{ TEND[x.tend].s }}</span>
+                <span v-else class="ud-mut">—</span>
+              </td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p v-if="!resumoAno.nReal" class="ud-nota">Para calcular o autoconsumo é preciso ter a geração real do mês lançada.</p>
+    </section>
+
+    <!-- ══════════ Unidades compensadas ══════════ -->
+    <section class="lx-panel">
+      <div class="lx-panel-hd">
+        <div>
+          <h3><span class="lx-ic" style="--c:var(--green)">▦</span>Unidades compensadas</h3>
+          <p>Relatórios lançados em {{ selectedYear }} por unidade (o ideal é 1 por mês)</p>
+        </div>
+      </div>
+      <div class="lx-tbl-wrap">
+        <table class="lx-tbl">
+          <thead><tr><th>UC</th><th>Nome</th><th class="r">Rateio</th><th class="c">Relatórios {{ selectedYear }}</th><th class="c">Ações</th></tr></thead>
+          <tbody>
+            <tr v-for="unidade in unidadesCompensadas" :key="unidade.id">
+              <td class="lx-mono">{{ unidade.uc }}</td>
+              <td>{{ unidade.nome }}</td>
+              <td class="r">{{ porcentagemDe(unidade.id) }}%</td>
+              <td class="c">
+                <span class="lx-pill" :style="{ '--c': getQuantidadeRelatorios(unidade.id, anoSel) >= 12 ? 'var(--green)' : getQuantidadeRelatorios(unidade.id, anoSel) ? 'var(--orange)' : 'var(--mut)' }">
+                  {{ getQuantidadeRelatorios(unidade.id, anoSel) }}/12
+                </span>
+              </td>
+              <td class="c">
+                <div class="ud-acts">
+                  <button class="lx-icon-btn" style="--c:var(--green)" title="Novo relatório" :aria-label="`Novo relatório para ${unidade.nome}`" @click="openDialogNovoRelatorio(unidade.id)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  </button>
+                  <button class="lx-icon-btn" style="--c:var(--teal)" title="Ver e editar relatórios" :aria-label="`Relatórios de ${unidade.nome}`" @click="openDialogRelatorios(unidade.id)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                  </button>
                 </div>
-            </UiParentCard>
-        </v-col>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-if="!unidadesCompensadas.length" class="lx-empty">Nenhuma unidade recebe créditos desta usina.</p>
+      </div>
+    </section>
 
-        <v-col cols="12" md="6">
-            <UiParentCard title="Manutenções" > 
-                <div class="pa-7 pt-1">
-                    <v-row>
-                        <v-col cols="6">
-                            <div class="d-flex align-center">
-                                <h4 class="mr-2">Última: </h4>
-                                <span v-if="ultima.length === 0">
-                                    Não há.
-                                </span>
-                                <span v-else>
-                                    {{ formatarData(ultima[ultima.length -1].data) }}
-                                </span>
-                            </div>
-                        </v-col>
-                        <v-col cols="6">
-                            <div v-if="ultima.length > 0" class="d-flex align-center">
-                                <h4 class="mr-2">Prevista: </h4>
-                                <span>{{ calcularDataPrevista(ultima[ultima.length -1].data) }}</span>
-                            </div>
-                        </v-col>
-                        <v-col cols="6">
-                            <div class="d-flex align-center">
-                                <h4 class="mr-2">Programada: </h4>
-                                <span v-if="programada.length === 0">
-                                    Não há.
-                                </span>
-                                    
-                                <span v-else v-for="prog in programada" :key="prog.id">{{ formatarData(prog.data) }}</span>
+    <!-- ═════════════════════ DIÁLOGOS ═════════════════════ -->
 
-                            </div>
-                        </v-col>
-                        <v-col cols="6" class="text-center">
-                            <div v-if="programada.length > 0">
-                                <h4 class="mr-2">Falta {{ calcularDiasRestantes(programada[0].data) }} dias</h4>
-                            </div>
-                        </v-col>
-                        <v-col cols="12" class="text-center">
-                            <v-btn @click="openDialogConfigManu(usinaDetalhe.id)" size="30" icon class="bg-primary ml-5 mr-5">
-                                <v-avatar size="30" class="text-white">
-                                    <ReportIcon size="20" />
-                                </v-avatar>
-                                <v-tooltip activator="parent" location="bottom">Configurações</v-tooltip>
-                            </v-btn>
-                        </v-col>
-                        
-                    </v-row>
+    <!-- Excluir usina -->
+    <LxDialog v-model="dialogExcluir" titulo="Excluir usina" :subtitulo="usinaDetalhe.nome" icone="!" cor="var(--red)" :largura="440" persistente>
+      <div v-if="showSuccessAlertUsina" class="lx-alert ok">Usina excluída com sucesso.</div>
+      <p v-else class="ud-txt">Tem certeza de que deseja excluir esta usina? Essa ação não pode ser desfeita.</p>
+      <template #rodape>
+        <template v-if="!showSuccessAlertUsina">
+          <button class="lx-btn-ghost" @click="dialogExcluir = false">Cancelar</button>
+          <button class="lx-btn danger" @click="excluirUsina">Excluir</button>
+        </template>
+        <button v-else class="lx-btn" @click="navigateTo('/usinas/')">Voltar para usinas</button>
+      </template>
+    </LxDialog>
+
+    <!-- Programar manutenção -->
+    <LxDialog v-model="dialogProgramarManutencao" titulo="Programar manutenção" :subtitulo="usinaDetalhe.nome" icone="⚙" cor="var(--purple)" :largura="520">
+      <div v-if="showErrorCampoManu" class="lx-alert err">Preencha todos os campos.</div>
+      <div v-if="showSuccessAlertManu" class="lx-alert ok">Manutenção programada com sucesso.</div>
+      <div class="lx-form">
+        <div class="lx-field"><label for="mn-data">Data da manutenção</label><input id="mn-data" v-model="dataManutencao" type="date" class="lx-input"></div>
+        <div class="lx-field"><label for="mn-emp">Empresa responsável</label><input id="mn-emp" v-model="empresaResponsavel" class="lx-input"></div>
+        <div class="lx-field full"><label for="mn-desc">Descrição</label><textarea id="mn-desc" v-model="descricaoManutencao" rows="3" class="lx-input"></textarea></div>
+      </div>
+      <template #rodape>
+        <button class="lx-btn-ghost" @click="dialogProgramarManutencao = false">Cancelar</button>
+        <button class="lx-btn" style="--c1:var(--purple);--c2:var(--teal)" @click="sendManutencao">Programar</button>
+      </template>
+    </LxDialog>
+
+    <!-- OS da manutenção recém-programada -->
+    <LxDialog v-model="dialogManuCriada" titulo="Manutenção programada" subtitulo="Ordem de serviço pronta para download" icone="✓" cor="var(--green)" :largura="900">
+      <div class="ud-paper-wrap">
+        <div id="OSPDF" class="ud-paper">
+          <div class="ud-os-logos"><img src="/images/logo_lucentis.png" alt="" width="70"><img src="/images/logo_peehorto.png" alt="" width="150"></div>
+          <h2>ORDEM DE SERVIÇO</h2>
+          <p class="ud-os-sub">Secretaria de Obras<br>Departamento de Iluminação Pública</p>
+          <table class="ud-os"><tbody>
+            <tr><th colspan="3" class="hd">INFORMAÇÕES</th></tr>
+            <tr><th>UNIDADE</th><th colspan="2">DESCRIÇÃO</th></tr>
+            <tr><td>{{ usinaDetalhe.uc }}</td><td colspan="2">{{ usinaDetalhe.nome }}</td></tr>
+            <tr><th colspan="3">ENDEREÇO</th></tr>
+            <tr><td colspan="3">{{ usinaDetalhe.endereco }}</td></tr>
+            <tr><th>DATA</th><th>SOLICITAÇÃO</th><th>EMPRESA RESPONSÁVEL</th></tr>
+            <tr><td>{{ dataManutencao ? formatarData(dataManutencao) : '' }}</td><td>Manutenção em Usina Fotovoltaica.</td><td>{{ empresaResponsavel }}</td></tr>
+            <tr><th colspan="3">DESCRIÇÃO</th></tr>
+            <tr><td colspan="3">{{ descricaoManutencao }}</td></tr>
+          </tbody></table>
+          <div class="ud-os-ft"><span>www.admin.peehorto.com</span><span>{{ new Date().toLocaleDateString('pt-BR') }}</span></div>
+        </div>
+      </div>
+      <template #rodape>
+        <button class="lx-btn-ghost" @click="dialogManuCriada = false">Fechar</button>
+        <button class="lx-btn danger" @click="baixarPDF('OSPDF')">Baixar PDF</button>
+      </template>
+    </LxDialog>
+
+    <!-- Lista de manutenções -->
+    <LxDialog v-model="dialogVerManutencoes" titulo="Manutenções" :subtitulo="usinaDetalhe.nome" icone="⚙" cor="var(--purple)" :largura="820">
+      <div class="lx-tbl-wrap">
+        <table class="lx-tbl">
+          <thead><tr><th>ID</th><th>Data</th><th>Empresa</th><th class="c">Status</th><th class="c">Ações</th></tr></thead>
+          <tbody>
+            <tr v-for="manutencao in manutencoes" :key="manutencao.id">
+              <td class="lx-mono">{{ manutencao.id }}</td>
+              <td>{{ formatarData(manutencao.data) }}</td>
+              <td>{{ manutencao.empresa }}</td>
+              <td class="c"><span class="lx-pill" :style="{ '--c': STATUS_MANU[manutencao.status] ?? 'var(--mut)' }"><i></i>{{ getStatusLabel(manutencao.status) }}</span></td>
+              <td class="c">
+                <div class="ud-acts">
+                  <button class="lx-icon-btn" style="--c:var(--red)" title="Ordem de serviço (PDF)" aria-label="Ordem de serviço" @click="verOrdem(manutencao.id)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                  </button>
+                  <button class="lx-icon-btn" style="--c:var(--purple)" title="Alterar status" aria-label="Alterar status" @click="abrirDialog(manutencao.id)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  </button>
+                  <button class="lx-icon-btn" style="--c:var(--red)" title="Excluir" aria-label="Excluir manutenção" @click="deleteManutencao(manutencao.id)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+                  </button>
                 </div>
-            </UiParentCard>
-        </v-col>
-    </v-row> 
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-if="!manutencoes?.length" class="lx-empty">Nenhuma manutenção encontrada.</p>
+      </div>
+      <template #rodape>
+        <button class="lx-btn" style="--c1:var(--purple);--c2:var(--teal)" @click="programarManutencao">+ Programar manutenção</button>
+      </template>
+    </LxDialog>
 
-    <!-- MENU MANUTENÇÕES (MENU, ADICIONAR MANUTENCAO, LISTAR MANUTENCOES) // PROGRAMAR MANU // PDF MANU // VERMANUTENÇÕES-->
-    <v-row justify="center">
-        <v-dialog v-model="dialogConfiguracoes" width="500">
-        <v-card>
-            <v-card-title style="background: linear-gradient(to bottom, #4d7fff, #1e73be); color: white;">
-            <span class="text-h5">Configurações</span>
-            </v-card-title>
-            <v-card-text>
-            <v-container>
-                <v-row>
-                <v-col cols="12" class="text-center">
-                    <v-btn @click="programarManutencao" color="primary mr-5 mb-5">Programar Manutenção</v-btn>
-                    <v-btn @click="verManutencoes" color="primary mb-5">Ver Manutenções</v-btn>
-                </v-col>
-                </v-row>
-            </v-container>
-            </v-card-text>
-        </v-card>
-        </v-dialog>
+    <!-- OS de uma manutenção da lista -->
+    <LxDialog v-model="dialogManuEditPDF" titulo="Ordem de serviço" :subtitulo="usinaDetalhe.nome" icone="⎙" cor="var(--red)" :largura="900">
+      <div class="ud-paper-wrap">
+        <div id="OSPDF2" class="ud-paper">
+          <div class="ud-os-logos"><img src="/images/logo_lucentis.png" alt="" width="70"><img src="/images/logo_peehorto.png" alt="" width="150"></div>
+          <h2>ORDEM DE SERVIÇO</h2>
+          <p class="ud-os-sub">Secretaria de Obras<br>Departamento de Iluminação Pública</p>
+          <table class="ud-os"><tbody>
+            <tr><th colspan="3" class="hd">INFORMAÇÕES</th></tr>
+            <tr><th>UNIDADE</th><th colspan="2">DESCRIÇÃO</th></tr>
+            <tr><td>{{ usinaDetalhe.uc }}</td><td colspan="2">{{ usinaDetalhe.nome }}</td></tr>
+            <tr><th colspan="3">ENDEREÇO</th></tr>
+            <tr><td colspan="3">{{ usinaDetalhe.endereco }}</td></tr>
+            <tr><th>DATA</th><th>SOLICITAÇÃO</th><th>EMPRESA RESPONSÁVEL</th></tr>
+            <tr><td>{{ dataPDFEdit ? formatarData(dataPDFEdit) : '' }}</td><td>Manutenção em Usina Fotovoltaica.</td><td>{{ empresaPDFEdit }}</td></tr>
+            <tr><th colspan="3">DESCRIÇÃO</th></tr>
+            <tr><td colspan="3">{{ descricaoManutencaoEdit }}</td></tr>
+          </tbody></table>
+          <div class="ud-os-ft"><span>www.admin.peehorto.com</span><span>{{ new Date().toLocaleDateString('pt-BR') }}</span></div>
+        </div>
+      </div>
+      <template #rodape>
+        <button class="lx-btn-ghost" @click="dialogManuEditPDF = false">Fechar</button>
+        <button class="lx-btn danger" @click="baixarPDF('OSPDF2')">Baixar PDF</button>
+      </template>
+    </LxDialog>
 
-    <v-dialog v-model="dialogProgramarManutencao" width="500">
-      <v-card>
-        <v-card-title style="background: linear-gradient(to bottom, #4d7fff, #1e73be); color: white;">
-          <span class="text-h5">Programar Manutenção</span>
-        </v-card-title>
-        <v-card-text>
-            <v-row>
-                <v-col v-if="showErrorCampoManu" cols="12">
-                    <v-alert  type="error">
-                        Preencha todos os campos!
-                    </v-alert>
-                </v-col>
-                <v-col v-if="showSuccessAlertManu" cols="12">
-                    <v-alert type="success">
-                            Manutenção programada com sucesso!
-                        </v-alert>
-                </v-col>
-                <v-col cols="12">
-                    <v-text-field v-model="dataManutencao" label="Data da Manutenção" type="date" required></v-text-field>
-                </v-col>
-                <v-col cols="12">
-                    <v-text-field v-model="empresaResponsavel" label="Nome da Empresa Responsável" required></v-text-field>
-                </v-col>
-                <v-col cols="12">
-                    <v-text-field v-model="descricaoManutencao" label="Descrição" required></v-text-field>
-                </v-col>
-                <v-col cols="12" class="text-center">
-                    <v-btn @click="sendManutencao" type="submit" color="primary">Programar</v-btn>
-                </v-col>
-            </v-row>
-        </v-card-text>
-      </v-card>
-    </v-dialog>
+    <!-- Alterar status da manutenção -->
+    <LxDialog v-model="dialogVisible" titulo="Alterar status da manutenção" icone="✎" cor="var(--purple)" :largura="460">
+      <div v-if="showErrorCampoManuEdit" class="lx-alert err">Selecione um status.</div>
+      <div v-if="showSuccessAlertManuEdit" class="lx-alert ok">Manutenção editada com sucesso.</div>
+      <div class="lx-field">
+        <label>Status</label>
+        <div class="lx-seg" role="radiogroup" aria-label="Status da manutenção">
+          <button v-for="s in statusOptions" :key="s" role="radio" :aria-checked="statusIndi === s" :class="{ on: statusIndi === s }" :style="{ '--c': STATUS_MANU[s] }" @click="statusIndi = s">{{ getStatusLabel(s) }}</button>
+        </div>
+      </div>
+      <template #rodape>
+        <button class="lx-btn-ghost" @click="dialogVisible = false">Fechar</button>
+        <button class="lx-btn" style="--c1:var(--purple);--c2:var(--teal)" @click="editarManutencao(manuRefId)">Salvar</button>
+      </template>
+    </LxDialog>
 
-    <v-dialog v-model="dialogManuCriada" width="1024">
-      <v-card>
-        <v-card-title style="background: linear-gradient(to bottom, #4d7fff, #1e73be); color: white;">
-          <span class="text-h5">Manutenção Programada...</span>
-        </v-card-title>
-        <v-card-text ref="tabelaElement" id="OSPDF">
-            <v-row>
-                <v-col cols="2" class="text-right">
-                    <img src="/images/logo_lucentis.png" alt="" width="70"> 
-                </v-col> 
-                <v-col cols="7" class="text-center">
-                    
-                </v-col> 
-                <v-col cols="2">
-                    <img src="/images/logo_peehorto.png" alt="" style="margin-right: 250px" width="150"> 
-                </v-col> 
-            </v-row>
-            <v-row justify="space-around">
-                <v-col cols="12" class="text-center" style="padding-bottom: 10px;">
-                    <h2>ORDEM DE SERVIÇO</h2>
-                </v-col> 
-                <v-col cols="12" class="text-center" style="padding-top: 0px; padding-bottom: 0px;">
-                    <h5>Secretaria de Obras</h5>
-                </v-col> 
-                <v-col cols="12" class="text-center" style="padding-top: 0px;">
-                    <h5>Departamento de Iluminação Pública</h5>
-                </v-col>   
-            </v-row>
-            <v-row>
-                <v-col cols="12" class="text-center">
-                    <v-table>
-                        <thead>
-                            <tr>
-                                <th colspan="3" class="text-center bg-primary" >INFORMAÇÕES</th>
-                            </tr>
-                            <tr>
-                                <th class="text-center" style="background-color: #e8e8e8">UNIDADE</th>
-                                <th colspan="2" class="text-center" style="background-color: #e8e8e8">DESCRIÇÃO</th>
-                            </tr>
-                            <tr>
-                                <td>{{ usinaDetalhe.uc}}</td>
-                                <td colspan="2" class="text-center">{{ usinaDetalhe.nome }}</td>
-                            </tr>
-                            <tr>
-                                <th class="text-center" colspan="3" style="background-color: #e8e8e8">ENDEREÇO</th>
-                            </tr>
-                            <tr>
-                                <td  colspan="3" style="font-size: 13px" >{{ usinaDetalhe.endereco}}</td>
-                            </tr>
-                            <tr>
-                                <td colspan="3"></td>
-                            </tr>
-                            <tr>
-                                <th class="text-center" style="background-color: #e8e8e8">DATA</th>
-                                <th class="text-center" style="background-color: #e8e8e8">SOLICITAÇÃO</th>
-                                <th class="text-center" style="background-color: #e8e8e8">EMPRESA RESPONSÁVEL</th>
-                            </tr>
-                            <tr>
-                                <td>{{ formatarData(dataManutencao) }}</td>
-                                <td>Manutenção em Usina Fotovoltaica.</td>
-                                <td>{{ empresaResponsavel }}</td>
-                            </tr>
-                            <tr>
-                                <td colspan="3"></td>
-                            </tr>
-                             <tr>
-                                <th colspan="3" class="text-center" style="background-color: #e8e8e8;">Descrição</th>
-                            </tr>
-                            <tr>
-                                <td colspan="3">{{ descricaoManutencao }}</td>
-                            </tr>
-                        </thead>
-                    </v-table>
-                    <br>
-                    <v-divider></v-divider>
-                    <br>
-                    <v-row>
-                        <v-col cols="6" class="text-left">
-                            <h5>www.admin.peehorto.com</h5>
-                        </v-col>
-                        <v-col cols="6" class="text-right">
-                            <h5>{{ new Date().toLocaleDateString() }}</h5>
-                        </v-col>
-                    </v-row>
-                    <br>
-                    <br>
-                    <br>  
-                    <v-divider></v-divider>
-                </v-col>
-            </v-row>
-        </v-card-text>
-        <v-card-actions>
-           <v-row justify="space-around">
-            <v-btn @click="baixarPDF()" color="error">
-                <v-avatar size="30" class="text-error">
-                    <FileTextIcon  />
-                </v-avatar>
-                PDF Geral
-            </v-btn>
-           </v-row>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+    <!-- Lançar geração (projetada ou real) -->
+    <LxDialog v-model="dialogGeraConfig1" titulo="Lançar geração" subtitulo="Projetada ou real, em kWh" icone="⚡" cor="var(--teal)" :largura="560">
+      <div v-if="showErrorCampoProjecao" class="lx-alert err">Preencha todos os campos.</div>
+      <div v-if="showErrorMesProjecao" class="lx-alert err">Esse mês/ano já está preenchido.</div>
+      <div v-if="showSuccessAlertProjecao" class="lx-alert ok">Geração enviada com sucesso.</div>
+      <div class="lx-form">
+        <div class="lx-field full">
+          <label>Tipo</label>
+          <div class="lx-seg" role="radiogroup" aria-label="Tipo de geração">
+            <button role="radio" :aria-checked="tipoGeracao === 'P'" :class="{ on: tipoGeracao === 'P' }" style="--c:var(--orange)" @click="tipoGeracao = 'P'">Projetada</button>
+            <button role="radio" :aria-checked="tipoGeracao === 'R'" :class="{ on: tipoGeracao === 'R' }" style="--c:var(--teal)" @click="tipoGeracao = 'R'">Real</button>
+          </div>
+        </div>
+        <div class="lx-field"><label for="gr-mes">Mês</label>
+          <select id="gr-mes" v-model="mesGeracao" class="lx-input"><option value="" disabled>Selecione</option><option v-for="m in meses" :key="m" :value="m">{{ MESES_LONGO[m - 1] }}</option></select>
+        </div>
+        <div class="lx-field"><label for="gr-ano">Ano</label>
+          <select id="gr-ano" v-model="anoGeracao" class="lx-input"><option value="" disabled>Selecione</option><option v-for="a in anos" :key="a" :value="a">{{ a }}</option></select>
+        </div>
+        <div class="lx-field full"><label for="gr-kwh">{{ tipoGeracao === 'R' ? 'Geração real' : 'Projeção' }} (kWh)</label><input id="gr-kwh" v-model="kwhGeracao" type="number" class="lx-input"></div>
+      </div>
+      <template #rodape>
+        <button class="lx-btn-ghost" @click="dialogGeraConfig2 = true">Editar lançamentos</button>
+        <span class="sp"></span>
+        <button class="lx-btn" @click="sendGeracao">Salvar</button>
+      </template>
+    </LxDialog>
 
-    <v-dialog v-model="dialogVerManutencoes" width="800">
-      <v-card class="text-center">
-        <v-card-title style="background: linear-gradient(to bottom, #4d7fff, #1e73be); color: white;">
-          <span class="text-h5">Ver Manutenções</span>
-        </v-card-title>
-        <v-card-text>
-            <v-table class="table" >
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Data</th>
-                        <th>Empresa</th>
-                        <th>Status</th>
-                        <th>Ações</th>
-                    </tr>
-                </thead>
-            <tbody class="text-left">
-                <tr v-for="manutencao in manutencoes" :key="manutencao.id">
-                    <td>{{ manutencao.id }}</td>
-                    <td>{{ manutencao.data }}</td>
-                    <td>{{ manutencao.empresa }}</td>
-                    <td>
-                        <v-chip :class="getStatusColorClass(manutencao.status)">
-                        {{ getStatusLabel(manutencao.status) }}
-                        </v-chip>
-                    </td> 
-                    <td>
-                        <v-btn @click="verOrdem(manutencao.id)" icon class="mr-2">
-                            <FileTextIcon  />
-                        </v-btn>
-                        <v-btn @click="abrirDialog(manutencao.id)" icon class="mr-2">
-                            <v-icon>mdi-pencil</v-icon>
-                        </v-btn>
-                        <v-btn @click="deleteManutencao(manutencao.id)" icon>
-                            <v-icon>mdi-delete</v-icon>
-                        </v-btn>
-                    </td>
-                </tr>
+    <!-- Lançamentos de geração existentes -->
+    <LxDialog v-model="dialogGeraConfig2" titulo="Lançamentos de geração" :subtitulo="`Ano ${selectedYear}`" icone="⚡" cor="var(--teal)" :largura="860">
+      <div class="lx-grid g2">
+        <div v-for="bloco in [{ t: 'Projetada', c: 'var(--orange)', lista: projAnoLista, campo: 'projecao', tipo: 'P', del: deleteProjecao }, { t: 'Real', c: 'var(--teal)', lista: realAnoLista, campo: 'geracao', tipo: 'R', del: deleteGeracao }]" :key="bloco.t" class="ud-sub">
+          <h4 :style="{ color: bloco.c }">{{ bloco.t }}</h4>
+          <table class="lx-tbl">
+            <thead><tr><th>Mês</th><th class="r">kWh</th><th class="c">Ações</th></tr></thead>
+            <tbody>
+              <tr v-for="g in bloco.lista" :key="g.id">
+                <td>{{ MESES_LONGO[g.mes - 1] }}</td>
+                <td class="r">{{ numero(Number(g[bloco.campo]) || 0) }}</td>
+                <td class="c">
+                  <div class="ud-acts">
+                    <button class="lx-icon-btn" style="--c:var(--purple)" title="Editar" aria-label="Editar" @click="openDialogEditGeracao(g.id, bloco.tipo)">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </button>
+                    <button class="lx-icon-btn" style="--c:var(--red)" title="Excluir" aria-label="Excluir" @click="bloco.del(g.id)">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+                    </button>
+                  </div>
+                </td>
+              </tr>
             </tbody>
-            </v-table>
-                <v-alert v-if="manutencoes.length === 0" >
-                    Nenhuma manutenção encontrada.
-                </v-alert>
-        </v-card-text>
-      </v-card>
-    </v-dialog>
-    </v-row>
-
-    <v-dialog v-model="dialogManuEditPDF" width="1024">
-      <v-card>
-        <v-card-title style="background: linear-gradient(to bottom, #4d7fff, #1e73be); color: white;">
-          <span class="text-h5">[Download PDF] Manutenção Programada </span>
-        </v-card-title>
-        <v-card-text ref="tabelaElement" id="OSPDF">
-            <v-row>
-                <v-col cols="2" class="text-right">
-                    <img src="/images/logo_lucentis.png" alt="" width="70"> 
-                </v-col> 
-                <v-col cols="7" class="text-center">
-                    
-                </v-col> 
-                <v-col cols="2">
-                    <img src="/images/logo_peehorto.png" alt="" style="margin-right: 250px" width="150"> 
-                </v-col> 
-            </v-row>
-            <v-row justify="space-around">
-                <v-col cols="12" class="text-center" style="padding-bottom: 10px;">
-                    <h2>ORDEM DE SERVIÇO</h2>
-                </v-col> 
-                <v-col cols="12" class="text-center" style="padding-top: 0px; padding-bottom: 0px;">
-                    <h5>Secretaria de Obras</h5>
-                </v-col> 
-                <v-col cols="12" class="text-center" style="padding-top: 0px;">
-                    <h5>Departamento de Iluminação Pública</h5>
-                </v-col>   
-            </v-row>
-            <v-row>
-                <v-col cols="12" class="text-center">
-                    <v-table>
-                        <thead>
-                            <tr>
-                                <th colspan="3" class="text-center bg-primary" >INFORMAÇÕES</th>
-                            </tr>
-                            <tr>
-                                <th class="text-center" style="background-color: #e8e8e8">UNIDADE</th>
-                                <th colspan="2" class="text-center" style="background-color: #e8e8e8">DESCRIÇÃO</th>
-                            </tr>
-                            <tr>
-                                <td>{{ usinaDetalhe.uc}}</td>
-                                <td colspan="2" class="text-center">{{ usinaDetalhe.nome }}</td>
-                            </tr>
-                            <tr>
-                                <th class="text-center" colspan="3" style="background-color: #e8e8e8">ENDEREÇO</th>
-                            </tr>
-                            <tr>
-                                <td  colspan="3" style="font-size: 13px" >{{ usinaDetalhe.endereco}}</td>
-                            </tr>
-                            <tr>
-                                <td colspan="3"></td>
-                            </tr>
-                            <tr>
-                                <th class="text-center" style="background-color: #e8e8e8">DATA</th>
-                                <th class="text-center" style="background-color: #e8e8e8">SOLICITAÇÃO</th>
-                                <th class="text-center" style="background-color: #e8e8e8">EMPRESA RESPONSÁVEL</th>
-                            </tr>
-                            <tr>
-                                <td>{{ formatarData(dataPDFEdit) }}</td>
-                                <td>Manutenção em Usina Fotovoltaica.</td>
-                                <td>{{ empresaPDFEdit }}</td>
-                            </tr>
-                            <tr>
-                                <td colspan="3"></td>
-                            </tr>
-                             <tr>
-                                <th colspan="3" class="text-center" style="background-color: #e8e8e8;">Descrição</th>
-                            </tr>
-                            <tr>
-                                <td colspan="3">{{descricaoManutencaoEdit}}</td>
-                            </tr>
-                        </thead>
-                    </v-table>
-                    <br>
-                    <v-divider></v-divider>
-                    <br>
-                    <v-row>
-                        <v-col cols="6" class="text-left">
-                            <h5>www.admin.peehorto.com</h5>
-                        </v-col>
-                        <v-col cols="6" class="text-right">
-                            <h5>{{ new Date().toLocaleDateString() }}</h5>
-                        </v-col>
-                    </v-row>
-                    <br>
-                    <br>
-                    <br>  
-                    <v-divider></v-divider>
-                </v-col>
-            </v-row>
-        </v-card-text>
-        <v-card-actions>
-           <v-row justify="space-around">
-            <v-btn @click="baixarPDF()" color="error">
-                <v-avatar size="30" class="text-error">
-                    <FileTextIcon  />
-                </v-avatar>
-                PDF Geral
-            </v-btn>
-           </v-row>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-
-    <!-- EDITAR MANUTENÇÃO -->
-    <v-dialog v-model="dialogVisible" max-width="400">
-        <v-card>
-        <v-card-title style="background: linear-gradient(to bottom, #4d7fff, #1e73be); color: white;">
-            Editar Status
-        </v-card-title>
-        <v-card-text >
-            <v-col v-if="showErrorCampoManuEdit" cols="12">
-                <v-alert  type="error">
-                    Preencha todos os campos!
-                </v-alert>
-            </v-col>
-            <v-col v-if="showSuccessAlertManuEdit" cols="12">
-                <v-alert type="success">
-                    Manutenção editada com sucesso!
-                </v-alert>
-            </v-col>
-            <v-row>
-                <v-col cols="12" class="text-center">
-                    <strong class="mr-5">1: Programado</strong>
-                    <strong class="mr-5">2: Realizando</strong><br>
-                    <strong class="mr-5">3: Realizado</strong>
-                </v-col>
-            </v-row>
-            <br>
-            <v-select v-model="statusIndi" :items="statusOptions" label="Selecione o status"></v-select>
-        </v-card-text>
-        <v-card-actions>
-            <v-btn @click="editarManutencao(manuRefId)" color="primary">
-            Editar
-            </v-btn>
-        </v-card-actions>
-        </v-card>
-    </v-dialog>
-
-    <br>
-
-    <!-- CARD GERAÇÕES E INJEÇÕES -->
-    <v-row>
-        <!-- TABELA GERAÇÕES -->
-        <v-col sm="12" xs="12" md="12" lg="6" xl="6" cols="12">
-            <v-card elevation="10" class="withbg">
-                <!-- style="background-color: #ECF2FF; " -->
-                <v-card-item class="pa-0">
-                    <div class="d-sm-flex align-center">
-                        
-                        <h5 class="text-h3 pl-7 pt-7">
-                            <v-avatar class="bg-lightprimary text-primary mb-1" size="25">
-                                <BulbIcon size="19" />
-                            </v-avatar>
-                             
-                            Geração {{ selectedYear }} (kWh)</h5>
-
-                    </div>
-                    <div class="text-center">
-                        <v-btn @click="toggleYear" size="40" icon class="bg-primary mt-2 ml-5 mr-5 mb-2">
-                            <v-avatar size="30" class="text-white">
-                                <ExchangeIcon size="20" />
-                            </v-avatar>
-                            <v-tooltip activator="parent" location="bottom">Trocar ano</v-tooltip>
-                        </v-btn>
-                        <v-btn @click="openDialogProjecao" size="40" icon class="bg-primary mt-2 ml-5 mr-5 mb-2">
-                            <v-avatar size="30" class="text-white">
-                                <SettingsIcon size="20" />
-                            </v-avatar>
-                            <v-tooltip activator="parent" location="bottom">Configurações</v-tooltip>
-                        </v-btn>
-                    </div>
-                    <div class="pa-7 pt-1"> 
-                        <v-row>
-                            <v-col cols="12">
-                            <v-table>
-                                <thead>
-                                <tr>
-                                    <th class="text-center">Geração</th>
-                                    <th class="text-center">Jan</th>
-                                    <th class="text-center">Fev</th>
-                                    <th class="text-center">Mar</th>
-                                    <th class="text-center">Abr</th>
-                                    <th class="text-center">Mai</th>
-                                    <th class="text-center">Jun</th>
-                                    <th class="text-center">Jul</th>
-                                    <th class="text-center">Ago</th>
-                                    <th class="text-center">Set</th>
-                                    <th class="text-center">Out</th>
-                                    <th class="text-center">Nov</th>
-                                    <th class="text-center">Dez</th>
-                                </tr>
-                                </thead>
-                                <tbody>
-                                <tr>
-                                    <th>Projetada</th>
-                                    <td class="text-center" v-for="geracao in proDetalheAno" :key="geracao.id">{{ geracao.projecao }}</td>
-                                </tr>
-                                <tr>
-                                    <th>Real</th>
-                                    <td class="text-center" v-for="real in gerDetalheAno" :key="real.id">
-                                        {{ real.geracao }} 
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <th>Análise</th>
-                                    <td class="text-center" v-for="(real, index) in gerDetalheAno" :key="real.id">
-                                        <v-chip :color="(real.geracao - proDetalheAno[index].projecao) >= 0 ? 'primary' : 'error'" variant="tonal">
-                                            {{ verificarManutencao(real.geracao, proDetalheAno[index].projecao) }}
-                                        </v-chip>
-                                    </td>
-                                </tr>
-                                </tbody>
-                            </v-table>
-                            </v-col>
-                        </v-row>
-                    </div>
-                </v-card-item>
-            </v-card>
-        </v-col>
-        
-        <!-- TABELA INJEÇÕES -->
-        <v-col sm="12" xs="12" md="12" lg="6" xl="6" cols="12">
-            <v-card elevation="10" class="withbg">
-                <!-- style="background-color: #ECF2FF; " -->
-                <v-card-item class="pa-0">
-                    <div class="d-sm-flex align-center">
-                        
-                        <h5 class="text-h3 pl-7 pt-7">
-                            <v-avatar class="bg-lightsecondary text-secondary mb-1" size="25">
-                                <NetworkIcon size="19" />
-                            </v-avatar>
-                             
-                            
-                            Injetado {{ selectedYear }} (kWh)</h5>
-
-                    </div>
-                    <div class="text-center">
-                        <v-btn @click="openDialogInjecao" size="40" icon class="bg-secondary mt-2 ml-5 mr-5 mb-2">
-                            <v-avatar size="30" class="text-white">
-                                <SettingsIcon size="20" />
-                            </v-avatar>
-                            <v-tooltip activator="parent" location="bottom">Configurações</v-tooltip>
-                        </v-btn>
-                    </div>
-                    <div class="pa-7 pt-1"> 
-                        <v-row>
-                            <v-col cols="12">
-                            <v-table>
-                                <thead>
-                                <tr>
-                                    <th class="text-center">-</th>
-                                    <th class="text-center">Jan</th>
-                                    <th class="text-center">Fev</th>
-                                    <th class="text-center">Mar</th>
-                                    <th class="text-center">Abr</th>
-                                    <th class="text-center">Mai</th>
-                                    <th class="text-center">Jun</th>
-                                    <th class="text-center">Jul</th>
-                                    <th class="text-center">Ago</th>
-                                    <th class="text-center">Set</th>
-                                    <th class="text-center">Out</th>
-                                    <th class="text-center">Nov</th>
-                                    <th class="text-center">Dez</th>
-                                </tr>
-                                </thead>
-                                <tbody v-if="gerDetalheAno.length > 0">
-                                    <tr>
-                                        <th>Consumo (geração)</th>
-                                        <td class="text-center" v-for="(injecao, index) in injecaoUsinaAno" :key="injecao.id">
-                                            {{ parseInt(gerDetalheAno[index].geracao)  - ((Number(injecao.injetadoPonta) + Number(injecao.injetadoFPonta))) }}
-                                        </td>
-                                    </tr>
-
-                                    <tr>
-                                        <th>Injetado</th>
-                                        <td class="text-center" v-for="injecao in injecaoUsinaAno" :key="injecao.id">{{ (Number(injecao.injetadoPonta) + Number(injecao.injetadoFPonta)) }}</td>
-                                    </tr>
-                                    <tr>
-                                        <th>Análise</th>
-                                        <td class="text-center" v-for="(injecao, index) in injecaoUsinaAno" :key="injecao.id">
-                                            <!-- Verifica se a quantidade atual é maior que a do mês anterior -->
-                                            <v-avatar v-if="index > 0 && Number(injecao.injetadoPonta) + Number(injecao.injetadoFPonta) > Number(injecaoUsinaAno[index - 1].injetadoPonta + injecaoUsinaAno[index - 1].injetadoFPonta)" class="bg-lightsuccess text-success" size="30">
-                                                <ArrowUpRightIcon size="20" />
-                                            </v-avatar>
-
-                                            <!-- Verifica se a quantidade atual é menor que a do mês anterior -->
-                                            <v-avatar v-else-if="index > 0 && Number(injecao.injetadoPonta) + Number(injecao.injetadoFPonta) < Number(injecaoUsinaAno[index - 1].injetadoPonta + injecaoUsinaAno[index - 1].injetadoFPonta)" class="bg-lighterror text-error" size="30">
-                                                <ArrowDownRightIcon size="20" />
-                                            </v-avatar>
-
-                                            <v-avatar v-else-if="index > 0 && Number(injecao.injetadoPonta) + Number(injecao.injetadoFPonta) === 0" class="bg-lighterror text-error" size="30">
-                                                <CircleXIcon size="20" />
-                                            </v-avatar>
-
-                                            <!-- Se não for nem maior nem menor, é igual -->
-                                            <v-avatar v-else class="bg-lightsecondary text-secondary" size="30">
-                                                <CheckIcon size="20" />
-                                            </v-avatar>
-                                        </td>
-                                    </tr>
-                                            
-                                    </tbody>
-                                    <tbody v-else>
-                                        <tr>
-                                            <td colspan="13">
-                                               É necessário ter pelo menos 1 geração real no mês do no sistema para ver a tabela de injeções.
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </v-table>
-                            </v-col>
-                        </v-row>
-                    </div>
-                </v-card-item>
-            </v-card>
-        </v-col>
-    </v-row>
-    
-    <!-- SISTEMA GERAÇÕES -->
-    <!-- ADICIONAR GERAÇÃO PROJ OU REAL-->
-    <v-row justify="center">
-    <v-dialog v-model="dialogGeraConfig1" width="1024">
-      <v-card>
-        <v-card-title style="background: linear-gradient(to bottom, #4d7fff, #1e73be); color: white;">
-          <span class="text-h5">Adicionar Geração Projetado ou Real</span>
-        </v-card-title>
-        <v-card-text>
-          <v-container>
-            <v-row>
-                <v-col v-if="showErrorCampoProjecao" cols="12">
-                    <v-alert  type="error">
-                        Preencha todos os campos!
-                    </v-alert>
-                </v-col>
-                <v-col v-if="showErrorMesProjecao" cols="12">
-                    <v-alert  type="error">
-                        Esse mês/ano já está preenchido!
-                    </v-alert>
-                </v-col>
-                <v-col v-if="showSuccessAlertProjecao" cols="12">
-                    <v-alert type="success">
-                            Geração enviada com sucesso!
-                        </v-alert>
-                </v-col>
-                <v-col cols="6">
-                    <v-label class="font-weight-bold mb-1">Mês</v-label>
-                    <v-select v-model="mesGeracao" :items="meses" label="Mês" hide-details color="primary" required></v-select>
-                    </v-col>
-
-                <v-col cols="6">
-                    <v-label class="font-weight-bold mb-1">Ano</v-label>
-                    <v-select v-model="anoGeracao" :items="anos" label="Ano" hide-details color="primary"></v-select>
-                </v-col>
-
-                <v-col cols="6" >
-                    <v-label class="font-weight-bold mb-1">Tipo</v-label>
-                    <v-radio-group v-model="tipoGeracao" inline>
-                        <v-radio label="Projetada" value="P"></v-radio>
-                        <v-radio label="Real" value="R"></v-radio>
-                    </v-radio-group>
-                </v-col>
-
-                <v-col cols="6">
-                    <v-label class="font-weight-bold mb-1">Projeção (kWh)</v-label>
-                    <v-text-field v-model="kwhGeracao" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                </v-col>
-                
-            </v-row>
-          </v-container>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn color="blue-darken-1" variant="text" @click="dialogGeraConfig2 = true">
-            Editar gerações existentes
-          </v-btn>
-          <v-btn color="blue-darken-1" variant="text" @click="sendGeracao">
-            Salvar
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-    </v-row>
-
-    <!-- VIZUALIZAR GERAÇÕES PROJ E REAL-->
-    <v-row>
-    <v-dialog v-model="dialogGeraConfig2" width="1024" >
-        <v-card>
-          <v-card-title style="background: linear-gradient(to bottom, #4d7fff, #1e73be); color: white;">
-            Gerações Existentes
-          </v-card-title>
-          <v-card-text>
-            <v-row>
-                <v-col>
-                    <v-card>
-                        <v-card-title class="text-h5 text-center mb-5">Projetada</v-card-title>
-                        <v-card-text>
-                            <v-row v-for="geracao in proDetalheAno" :key="geracao.id">
-                                <v-col class="text-center">
-                                    <strong>MÊS:</strong><br> {{ geracao.mes }}
-                                </v-col>
-                                <v-col class="text-center">
-                                    <strong>kWh:</strong><br> {{ geracao.projecao }}
-                                </v-col>
-                                <v-col>
-                                    <v-btn @click="openDialogEditGeracao(geracao.id, 'P')" color="success">Editar</v-btn>
-                                </v-col>
-                                <v-col>
-                                    <v-btn @click="deleteProjecao(geracao.id)" color="error">Excluir</v-btn>
-                                </v-col>
-                            </v-row>
-                        </v-card-text>
-                    </v-card>
-                </v-col>
-                <v-col>
-                    <v-card>
-                        <v-card-title class="text-h5 text-center mb-5">Real</v-card-title>
-                        <v-card-text>
-                            <v-row v-for="real in gerDetalheAno" :key="real.id">
-                                <v-col class="text-center">
-                                    <strong>MÊS:</strong><br> {{ real.mes }}
-                                </v-col>
-                                <v-col class="text-center">
-                                    <strong>kWh:</strong><br> {{ real.geracao }}
-                                </v-col>
-                                <v-col>
-                                    <v-btn @click="openDialogEditGeracao(real.id, 'R')" color="success">Editar</v-btn>
-                                </v-col>
-                                <v-col>
-                                    <v-btn @click="deleteGeracao(real.id)" color="error">Excluir</v-btn>
-                                </v-col>
-                            </v-row>
-                        </v-card-text>
-                    </v-card>
-                </v-col>
-            </v-row>
-          </v-card-text>
-        </v-card>
-      </v-dialog>
-    </v-row>
-
-    <!-- EDITAR GERAÇÃO PROJ OU REAL -->
-    <v-row>
-    <v-dialog v-model="dialogGeraConfig3" width="1024" >
-        <v-card>
-          <v-card-title style="background: linear-gradient(to bottom, #4d7fff, #1e73be); color: white;">
-            Editando Geração
-          </v-card-title>
-          <v-card-text>
-            <v-row>
-                <v-container>
-                    <v-row>
-                        <v-col v-if="showErrorCampoGeracaoEdit" cols="12">
-                            <v-alert  type="error">
-                                Preencha todos os campos!
-                            </v-alert>
-                        </v-col>
-                        <v-col v-if="showErrorAlertGeracaoEdit" cols="12">
-                            <v-alert  type="error">
-                                Erro ao tentar editar geração!
-                            </v-alert>
-                        </v-col>
-                        <v-col v-if="showSuccessAlertGeracaoEdit" cols="12">
-                            <v-alert type="success">
-                                    Geração enviada com sucesso!
-                                </v-alert>
-                        </v-col>
-                        <v-col cols="6">
-                            <v-label class="font-weight-bold mb-1">Mês</v-label>
-                            <v-select disabled v-model="mesGeracaoEdit" :items="meses" label="Mês" hide-details color="primary" required></v-select>
-                            </v-col>
-
-                        <v-col cols="6">
-                            <v-label class="font-weight-bold mb-1">Ano</v-label>
-                            <v-select disabled v-model="anoGeracaoEdit" :items="anos" label="Ano" hide-details color="primary"></v-select>
-                        </v-col>
-
-                        <v-col cols="6" >
-                            <v-label class="font-weight-bold mb-1">Tipo</v-label>
-                            <v-radio-group disabled v-model="tipoGeracaoEdit" inline>
-                                <v-radio label="Projetada" value="P"></v-radio>
-                                <v-radio label="Real" value="R"></v-radio>
-                            </v-radio-group>
-                        </v-col>
-
-                        <v-col cols="6">
-                            <v-label class="font-weight-bold mb-1">Projeção (kWh)</v-label>
-                            <v-text-field v-model="kwhGeracaoEdit" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                        </v-col>
-                    </v-row>
-                </v-container>
-            </v-row>
-          </v-card-text>
-          <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn color="blue-darken-1" variant="text" @click="dialogGeraConfig3 = false">
-            Fechar
-          </v-btn>
-          <v-btn color="blue-darken-1" variant="text" @click="editarGeracao(idGeracaoEdit, tipoGeracaoEdit)">
-            Salvar
-          </v-btn>
-        </v-card-actions>
-        </v-card>
-      </v-dialog>
-    </v-row>
-
-    <!-- SISTEMA INJEÇÕES -->
-    <!-- ADICIONAR INJEÇÃO -->
-    <v-row justify="center">
-    <v-dialog v-model="dialogInjecao1" width="500">
-      <v-card>
-        <v-card-title style="background: linear-gradient(to bottom, #4d7fff, #1e73be); color: white;">
-          <span class="text-h5">Adicionar nova Injeção</span>
-        </v-card-title>
-        <v-card-text>
-          <v-container>
-            <v-row>
-                <v-col v-if="showErrorCampoInjecao" cols="12">
-                    <v-alert  type="error">
-                        Preencha todos os campos!
-                    </v-alert>
-                </v-col>
-                <v-col v-if="showErrorMesInjecao" cols="12">
-                    <v-alert  type="error">
-                        Esse mês/ano já está preenchido!
-                    </v-alert>
-                </v-col>
-                <v-col v-if="showSuccessAlertInjecao" cols="12">
-                    <v-alert type="success">
-                            Injeção enviada com sucesso!
-                        </v-alert>
-                </v-col>
-                <v-col cols="6">
-                    <v-label class="font-weight-bold mb-1">Mês</v-label>
-                    <v-select v-model="mesInjecao" :items="meses" label="Mês" hide-details color="primary" required></v-select>
-                    </v-col>
-
-                <v-col cols="6">
-                    <v-label class="font-weight-bold mb-1">Ano</v-label>
-                    <v-select v-model="anoInjecao" :items="anos" label="Ano" hide-details color="primary"></v-select>
-                </v-col>
-
-                <v-col cols="6">
-                    <v-label class="font-weight-bold mb-1">Consumo (kWh)</v-label>
-                    <v-text-field v-model="consumoKWHUsina" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                </v-col>
-
-                <v-col cols="6">
-                    <v-label class="font-weight-bold mb-1">Consumo (R$)</v-label>
-                    <v-text-field v-model="consumoReaisUsina" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                </v-col>
-
-                <v-col cols="6">
-                    <v-label class="font-weight-bold mb-1">Inj. Ponta (kWh)</v-label>
-                    <v-text-field v-model="pontaInjetado" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                </v-col>
-
-                <v-col cols="6">
-                    <v-label class="font-weight-bold mb-1">Inj. FPonta (kWh)</v-label>
-                    <v-text-field v-model="pontaFInjetado" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                </v-col>
-                
-            </v-row>
-          </v-container>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn color="blue-darken-1" variant="text" @click="openDialogInjecao2">
-            Editar injeções existentes
-          </v-btn>
-          <v-btn color="blue-darken-1" variant="text" @click="sendInjecao">
-            Salvar
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-    </v-row>
-
-    <!-- LISTAR INJEÇÕES EXISTENTES PARA EDITAR/EXCLUIR -->
-    <v-row>
-    <v-dialog v-model="dialogInjecao2" width="600" >
-        <v-card>
-          <v-card-title style="background: linear-gradient(to bottom, #4d7fff, #1e73be); color: white;">
-            Injeções Existentes
-          </v-card-title>
-          <v-card-text>
-            <v-table>
-                <thead>
-                    <tr>
-                        <th class="text-center">Mês</th>
-                        <th class="text-center">Injetado</th>
-                        <th class="text-center">Configurações</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr v-for="injecao in injecaoUsinaAno" :key="injecao.id" style="height: 50px;">
-                        <td class="text-center">{{ injecao.mes }}</td>
-                        <td class="text-center">{{ (Number(injecao.injetadoPonta) + Number(injecao.injetadoFPonta)) }}</td>
-                        <td class="text-center">
-                            <v-btn class="mr-5" @click="openDialogInjecao3(injecao.id)" icon>
-                                <v-icon color="primary">mdi-pencil</v-icon>
-                            </v-btn>
-                            <v-btn @click="deleteInjecao(injecao.id)" icon>
-                                    <v-icon color="error">mdi-delete</v-icon>
-                            </v-btn>
-                        </td>
-                    </tr>
-                </tbody>
-            </v-table>
-          </v-card-text>
-        </v-card>
-      </v-dialog>
-    </v-row>
-
-    <!-- EDITAR INJEÇÃO -->
-    <v-row justify="center">
-    <v-dialog v-model="dialogInjecao3" width="500">
-      <v-card>
-        <v-card-title style="background: linear-gradient(to bottom, #4d7fff, #1e73be); color: white;">
-          <span class="text-h5">Editar Injeção</span>
-        </v-card-title>
-        <v-card-text>
-          <v-container>
-            <v-row>
-                <v-col v-if="showErrorCampoInjecao" cols="12">
-                    <v-alert  type="error">
-                        Preencha todos os campos!
-                    </v-alert>
-                </v-col>
-                <v-col v-if="showSuccessAlertInjecao" cols="12">
-                    <v-alert type="success">
-                            Injeção editada com sucesso!
-                        </v-alert>
-                </v-col>
-                <v-col cols="6">
-                    <v-label class="font-weight-bold mb-1">Mês</v-label>
-                    <v-select disabled v-model="mesInjecao" :items="meses" label="Mês" hide-details color="primary" required></v-select>
-                    </v-col>
-
-                <v-col cols="6">
-                    <v-label class="font-weight-bold mb-1">Ano</v-label>
-                    <v-select disabled v-model="anoInjecao" :items="anos" label="Ano" hide-details color="primary"></v-select>
-                </v-col>
-
-                <v-col cols="6">
-                    <v-label class="font-weight-bold mb-1">Consumo (kWh)</v-label>
-                    <v-text-field v-model="consumoKWHUsina" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                </v-col>
-
-                <v-col cols="6">
-                    <v-label class="font-weight-bold mb-1">Consumo (R$)</v-label>
-                    <v-text-field v-model="consumoReaisUsina" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                </v-col>
-
-                <v-col cols="6">
-                    <v-label class="font-weight-bold mb-1">Inj. Ponta (kWh)</v-label>
-                    <v-text-field v-model="pontaInjetado" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                </v-col>
-
-                <v-col cols="6">
-                    <v-label class="font-weight-bold mb-1">Inj. FPonta (kWh)</v-label>
-                    <v-text-field v-model="pontaFInjetado" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                </v-col>
-                
-            </v-row>
-          </v-container>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn color="blue-darken-1" variant="text" @click="editInjecao(injetadoId)">
-            Salvar
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-    </v-row>   
-
-    <br>
-    <br>
-    <br>
-    <br>
-    <!-- GRAFICOS GERACAO E INJEÇÃO-->
-    <v-row>
-        <v-col sm="12" xs="12" md="12" lg="6" xl="6" cols="12">
-            <MonthlyEarning :lista="geracoes" :ano="selectedYear"/>
-        </v-col> 
-
-        <v-col sm="12" xs="12" md="12" lg="6" xl="6" cols="12">
-            <UsinaInjecao :lista="injecoes" :ano="selectedYear"/>
-        </v-col> 
-    </v-row>
-
-    <!-- TABELA UNIDADES COMPENSADAS-->
-    <v-row>
-        <v-col cols="12" md="12">
-            <v-card elevation="3" class="withbg ">
-                <v-card-item class="pa-0">
-                    <div class="d-sm-flex justify-space-between align-center">
-                        <h5 class="text-h3 pl-7 pt-7">
-                            <v-avatar class="bg-lightsecondary text-secondary mb-1" size="30">
-                                <BuildingIcon size="21" />
-                            </v-avatar>
-                             
-                            
-                            Unidades Compensadas</h5>
-                        <!-- <v-btn @click="openDialogNovaUnidade" size="40" icon class="bg-secondary mt-2 ml-5 mr-5">
-                            <v-avatar size="30" class="text-white">
-                                <PlusIcon size="20" />
-                            </v-avatar>
-                            <v-tooltip activator="parent" location="bottom">Nova Unidade</v-tooltip>
-                        </v-btn> -->
-                    </div>
-                    <br>
-                    <div class="pa-7 pt-1"> 
-                        <v-row>
-                            <v-col cols="12">
-                            <v-table>
-                                <thead>
-                                <tr>
-                                    <th class="text-center">UC</th>
-                                    <th class="text-center">Nome</th>
-                                    <th class="text-center">Porcentagem</th>
-                                    <!-- <th class="text-center">2023 </th>
-                                    <th class="text-center">2024</th> -->
-                                    <th class="text-center">Ações</th>
-                                </tr>
-                                </thead>
-                                <tbody>
-                                    <tr class="text-center" v-for="unidade in unidadesCompensadas " :key="unidade.id">
-                                        <td><strong>{{unidade.uc}}</strong></td>
-                                        <td>{{unidade.nome}}</td>
-                                        <td>
-                                            <span v-for="porcento in porcentagens" :key="porcento.id">{{
-                                                porcento.idUnidadeCompensa === unidade.id ? porcento.porcentagem : ''
-                                            }}</span>%
-                                        </td>
-                                        <!-- <td>{{ getQuantidadeRelatorios(unidade.id, 2023) }}</td>
-                                        <td>{{ getQuantidadeRelatorios(unidade.id, 2024) }}</td> -->
-                                        <td>
-                                            <v-btn @click="openDialogNovoRelatorio(unidade.id)" size="30" icon class="bg-primary mr-2">
-                                                <v-avatar size="30" class="text-white">
-                                                    <PlusIcon size="20" />
-                                                </v-avatar>
-                                                <v-tooltip activator="parent" location="bottom">Novo Relatório</v-tooltip>
-                                            </v-btn>
-
-                                            <v-btn @click="openDialogRelatorios(unidade.id)" size="30" icon class="bg-primary mr-2">
-                                                <v-avatar size="30" class="text-white">
-                                                    <NotesIcon size="18" />
-                                                </v-avatar>
-                                                <v-tooltip activator="parent" location="bottom">Editar Relatórios</v-tooltip>
-                                            </v-btn>
-
-                                            <!-- <v-btn @click="openDialogEditUnidade(unidade.id)" size="30" icon class="bg-secondary mr-2">
-                                                <v-avatar size="30" class="text-white">
-                                                    <EditIcon size="18" />
-                                                </v-avatar>
-                                                <v-tooltip activator="parent" location="bottom">Editar Unidade</v-tooltip>
-                                            </v-btn>
-
-                                            <v-btn @click="openDialogExcluirUnidade(unidade.id)"  size="30" icon class="bg-error mr-2">
-                                                <v-avatar size="30" class="text-white">
-                                                    <TrashIcon size="18" />
-                                                </v-avatar>
-                                                <v-tooltip activator="parent" location="bottom">Excluir Unidade</v-tooltip>
-                                            </v-btn> -->
-
-                                        </td>
-                                    </tr>
-
-                                </tbody>
-                            </v-table>
-                            </v-col>
-                        </v-row>
-                    </div>
-                </v-card-item>
-            </v-card>
-        </v-col>
-    </v-row>
-
-    <!-- ADICIONAR NOVA UNIDADE (EXCLUIR) -->
-    <v-row justify="center">
-    <v-dialog v-model="dialogNovaUnidade" width="1024">
-      <v-card>
-        <v-card-title style="background: linear-gradient(to bottom, #4d7fff, #1e73be); color: white;">
-          <span class="text-h5">Adicionar - Unidade Compensada</span>
-        </v-card-title>
-        <v-card-text>
-          <v-container>
-            <v-row>
-                <v-col v-if="showErrorCampoUnidade" cols="12">
-                    <v-alert  type="error">
-                        Preencha todos os campos!
-                    </v-alert>
-                </v-col>
-                <v-col v-if="showSuccessAlertUnidade" cols="12">
-                    <v-alert type="success">
-                            Unidade adicionada com sucesso!
-                        </v-alert>
-                </v-col>
-
-                <v-col cols="6">
-                        <v-label class="font-weight-bold mb-1">UC</v-label>
-                        <v-text-field v-model="ucUnidade" type="number" variant="outlined" hide-details color="primary" required></v-text-field>
-                    </v-col>
-
-                    <v-col cols="6">
-                        <v-label class="font-weight-bold mb-1">Nome</v-label>
-                        <v-text-field v-model="nomeUnidade" variant="outlined" hide-details color="primary"></v-text-field>
-                    </v-col>
-
-                    <v-col cols="3">
-                        <v-label class="font-weight-bold mb-1">Início</v-label>
-                        <v-text-field v-model="dataInicioUnidade" variant="outlined" type="date"  hide-details color="primary"></v-text-field>
-                    </v-col>
-
-                    <v-col cols="3">
-                        <v-label class="font-weight-bold mb-1">Consumo (médio)</v-label>
-                        <v-text-field v-model="consumoUnidade" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                    </v-col>
-
-                    <v-col cols="3">
-                        <v-label class="font-weight-bold mb-1">Valor kWh (R$)</v-label>
-                        <v-text-field v-model="kwhUnidade" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                    </v-col>
-
-                    <v-col cols="3">
-                        <v-label class="font-weight-bold mb-1">Porcentagem (%)</v-label>
-                        <v-text-field v-model="porcentoUnidade" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                    </v-col>
-
-                    <v-col cols="6">
-                        <v-label class="font-weight-bold mb-1">Endereço</v-label>
-                        <v-text-field v-model="enderecoUnidade" variant="outlined"  hide-details color="primary"></v-text-field>
-                    </v-col>
-
-                    <v-col cols="6" >
-                        <v-label class="font-weight-bold mb-1">Status</v-label>
-                        <v-radio-group v-model="statusUnidade" inline>
-                            <v-radio label="Ligado" value="L"></v-radio>
-                            <v-radio label="Desligado" value="D"></v-radio>
-                            <v-radio label="Manutenção" value="M"></v-radio>
-                        </v-radio-group>
-                    </v-col>
-            </v-row>
-          </v-container>
-        </v-card-text>
-        <v-card-actions>
-          <v-spacer></v-spacer>
-          <v-btn color="blue-darken-1" variant="text" @click="sendUnidade">
-            Enviar
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
-    </v-row>
-
-    <!-- ADICIONAR NOVO RELATÓRIO PARA A UNIDADE -->
-    <v-row justify="center">
-        <v-dialog v-model="dialogNovoRelatorio" width="1024">
-        <v-card>
-            <v-card-title style="background: linear-gradient(to bottom, #4d7fff, #1e73be); color: white;">
-            <span class="text-h5">Criar Relatório Mensal</span>
-            </v-card-title>
-            <v-card-text>
-            <v-container>
-                <v-row>
-                    <v-col v-if="showErrorAlertRelatorio" cols="12">
-                        <v-alert  type="error">
-                            Error ao enviar projeção!
-                        </v-alert>
-                    </v-col>
-                    <v-col v-if="showErrorCampoRelatorio" cols="12">
-                        <v-alert  type="error">
-                            Preencha todos os campos!
-                        </v-alert>
-                    </v-col>
-                    <v-col v-if="showErrorMesRelatorio" cols="12">
-                        <v-alert  type="error">
-                            Esse mês/ano já está preenchido!
-                        </v-alert>
-                    </v-col>
-                    <v-col v-if="showSuccessAlertRelatorio" cols="12">
-                        <v-alert type="success">
-                                Relatório enviado com sucesso!
-                            </v-alert>
-                    </v-col>
-                    <v-col cols="12">
-                        <strong>UC:</strong> {{ ucUnidadeRela }}
-                        <br>
-                        <strong>UNIDADE:</strong> {{ nomeUnidadeRela }}
-                    </v-col>
-                    <v-divider></v-divider>
-                    <v-col cols="6">
-                        <v-label class="font-weight-bold mb-1">Mês</v-label>
-                        <v-select v-model="mesRelUni" :items="meses" label="Mês" hide-details color="primary" required></v-select>
-                        </v-col>
-
-                    <v-col cols="6">
-                        <v-label class="font-weight-bold mb-1">Ano</v-label>
-                        <v-select v-model="anoRelUni" :items="anos" label="Ano" hide-details color="primary"></v-select>
-                    </v-col>
-
-                    <v-col cols="4">
-                        <v-label class="font-weight-bold mb-1">Consumo (kWh)</v-label>
-                        <v-text-field v-model="consumoUni" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                    </v-col>
-
-                    <v-col cols="4">
-                        <v-label class="font-weight-bold mb-1">Consumo (R$)</v-label>
-                        <v-text-field v-model="valorConUni" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                    </v-col>
-
-                    <v-col cols="4">
-                        <v-label class="font-weight-bold mb-1">Saldo em Energia (kWh - Crédito)</v-label>
-                        <v-text-field v-model="saldoEnergiaUni" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                    </v-col>
-
-                    <v-col cols="6">
-                        <v-label class="font-weight-bold mb-1">Ener. Inj-TUSD (kWh)</v-label>
-                        <v-text-field v-model="enerTusdUni" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                    </v-col>
-
-                    <v-col cols="6">
-                        <v-label class="font-weight-bold mb-1">Valor (R$ - TUSD)</v-label>
-                        <v-text-field v-model="valorTusdUni" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                    </v-col>
-
-                    <v-col cols="6">
-                        <v-label class="font-weight-bold mb-1">Ener. Inj-TE (kWh)</v-label>
-                        <v-text-field v-model="enerTeUni" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                    </v-col>
-
-                    <v-col cols="6">
-                        <v-label class="font-weight-bold mb-1">Valor (R$ - TE)</v-label>
-                        <v-text-field v-model="valorTeUni" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                    </v-col>
-
-                </v-row>
-            </v-container>
-            </v-card-text>
-            <v-card-actions>
-            <v-spacer></v-spacer>
-            <v-btn color="blue-darken-1" variant="text" @click="sendRelatorioUni">
-                Salvar
-            </v-btn>
-            </v-card-actions>
-        </v-card>
-        </v-dialog>
-    </v-row>
-
-    <!-- EDITAR UNIDADE (EXCLUIR) -->
-    <v-row justify="center">
-        <v-dialog v-model="dialogEditUnidade" width="1024">
-        <v-card>
-            <v-card-title style="background: linear-gradient(to bottom, #4d7fff, #1e73be); color: white;">
-            <span class="text-h5">Editar - Unidade Compensada</span>
-            </v-card-title>
-            <v-card-text>
-            <v-container>
-                <v-row>
-                    <v-col v-if="showErrorAlertUnidadeEdit" cols="12">
-                        <v-alert  type="error">
-                            Erro em editar unidade!
-                        </v-alert>
-                    </v-col>
-                    <v-col v-if="showErrorCampoUnidadeEdit" cols="12">
-                        <v-alert  type="error">
-                            Preencha todos os campos!
-                        </v-alert>
-                    </v-col>
-                    <v-col v-if="showSuccessAlertUnidadeEdit" cols="12">
-                        <v-alert type="success">
-                                Unidade editada com sucesso!
-                            </v-alert>
-                    </v-col>
-
-                    <v-col cols="6">
-                            <v-label class="font-weight-bold mb-1">UC</v-label>
-                            <v-text-field v-model="ucUnidadeEdit" type="number" variant="outlined" hide-details color="primary" required></v-text-field>
-                        </v-col>
-
-                        <v-col cols="6">
-                            <v-label class="font-weight-bold mb-1">Nome</v-label>
-                            <v-text-field v-model="nomeUnidadeEdit" variant="outlined" hide-details color="primary"></v-text-field>
-                        </v-col>
-
-                        <v-col cols="3">
-                            <v-label class="font-weight-bold mb-1">Início</v-label>
-                            <v-text-field v-model="dataInicioUnidadeEdit" variant="outlined" type="date"  hide-details color="primary"></v-text-field>
-                        </v-col>
-
-                        <v-col cols="3">
-                            <v-label class="font-weight-bold mb-1">Consumo (médio)</v-label>
-                            <v-text-field v-model="consumoUnidadeEdit" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                        </v-col>
-
-                        <v-col cols="3">
-                            <v-label class="font-weight-bold mb-1">Valor kWh (R$)</v-label>
-                            <v-text-field v-model="kwhUnidadeEdit" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                        </v-col>
-
-                        <v-col cols="6">
-                            <v-label class="font-weight-bold mb-1">Endereço</v-label>
-                            <v-text-field v-model="enderecoUnidadeEdit" variant="outlined"  hide-details color="primary"></v-text-field>
-                        </v-col>
-
-                        <v-col cols="6" >
-                            <v-label class="font-weight-bold mb-1">Status</v-label>
-                            <v-radio-group v-model="statusUnidadeEdit" inline>
-                                <v-radio label="Ligado" value="L"></v-radio>
-                                <v-radio label="Desligado" value="D"></v-radio>
-                                <v-radio label="Manutenção" value="M"></v-radio>
-                            </v-radio-group>
-                        </v-col>
-                </v-row>
-            </v-container>
-            </v-card-text>
-            <v-card-actions>
-            <v-spacer></v-spacer>
-            <v-btn color="blue-darken-1" variant="text" @click="editUnidade">
-                Editar
-            </v-btn>
-            </v-card-actions>
-        </v-card>
-        </v-dialog>
-    </v-row>
-
-    <!-- EXCLUIR UNIDADE (EXCLUIR) -->
-    <div class="text-center">
-        <v-dialog v-model="dialogExcluirUnidade"  width="auto">
-            <v-card>
-                <v-card-text v-if="showSuccessAlertUnidadeExcluida">
-                   <v-alert type="success" title="Exclusão" text="Unidade excluída com sucesso!"></v-alert> 
-                </v-card-text>
-
-                <v-col v-if="showErrorAlertUnidadeExcluida" cols="12">
-                    <v-alert  type="error">
-                        Erro ao excluir unidade!
-                    </v-alert>
-                </v-col>
-                
-                <v-card-text v-if="!showSuccessAlertUnidadeExcluida">
-                    <v-col cols="12">
-                        Você tem certeza que deseja a unidade compensada?
-                    </v-col>
-                    <v-divider></v-divider>
-                    <v-col>
-                        <strong>UC: </strong> {{ ucUnidadeExcluir }}
-                        <br>
-                        <strong>NOME: </strong> {{ nomeUnidadeExcluir }}
-                    </v-col>
-                </v-card-text>
-                <v-card-actions v-if="!showSuccessAlertUnidadeExcluida">
-                        <v-btn color="error" block @click="deleteUnidade">Excluir</v-btn>
-                </v-card-actions>
-            </v-card>
-        </v-dialog>
-    </div>
-
-    <!-- LISTAR RELATÓRIOS DA UNIDADE -->
-    <v-row justify="center">
-        <v-dialog v-model="dialogRelatorios" width="1024">
-            <v-card>
-                <v-card-title style="background: linear-gradient(to bottom, #4d7fff, #1e73be); color: white;">
-                    <span class="text-h5">Lista de relatórios</span>
-                </v-card-title>
-                <v-card-text>
-                    <v-row>
-                        <v-col cols="6">
-                            <strong>UC: </strong> {{ ucUnidadeRelatorio }}
-                        </v-col>
-                        <v-col cols="6">
-                            <strong>Unidade: </strong> {{ nomeUnidadeRelatorio }}
-                        </v-col>
-                    </v-row>
-                    <v-container>
-                    <v-table>
-                        <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Ano</th>
-                            <th>Mês</th>
-                            <th>Configurações</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        <tr v-for="relatorio in relatoriosUnidade" :key="relatorio.id">
-                            <td>{{ relatorio.id }}</td>
-                            <td>{{ relatorio.ano }}</td>
-                            <td>{{ relatorio.mes }}</td>
-                            <td>
-                            <v-btn class="mr-5" @click="openDialogRelatoriosEditar(relatorio.id)" icon>
-                                <v-icon color="primary">mdi-pencil</v-icon>
-                            </v-btn>
-                            <v-btn @click="deleteRelatorio(relatorio.id)" icon>
-                                <v-icon color="error">mdi-delete</v-icon>
-                            </v-btn>
-                        </td>
-                    </tr>
-                    </tbody>
-                </v-table>
-                </v-container>
-                </v-card-text>
-            </v-card>
-        </v-dialog>
-    </v-row>
-
-    <!-- EDITANDO RELATORIO DA UNIDADE -->
-    <v-row justify="center">
-        <v-dialog v-model="dialogRelatoriosEditar" width="1024">
-            <v-card>
-            <v-card-title style="background: linear-gradient(to bottom, #4d7fff, #1e73be); color: white;">
-                <span class="text-h5">Editando Relatório</span>
-            </v-card-title>
-                <v-card-text>
-                    <v-container>
-                        <v-row>
-                            <strong>ID: </strong> {{ idRelaEdit }}
-                            <br><br>
-                            <v-divider></v-divider>
-                            <br>
-                        </v-row>
-                        <v-row>
-                        <v-col v-if="showErrorAlertEdit" cols="12">
-                            <v-alert  type="error">
-                                Erro em editar relatório!
-                            </v-alert>
-                        </v-col>
-                        <v-col v-if="showErrorCampoEdit" cols="12">
-                            <v-alert  type="error">
-                                Preencha todos os campos!
-                            </v-alert>
-                        </v-col>
-                        <v-col v-if="showSuccessAlertEdit" cols="12">
-                            <v-alert type="success">
-                                    Relatório editado com sucesso!
-                            </v-alert>
-                        </v-col>
-                        </v-row>
-                        <v-row>
-                            <v-col cols="6">
-                            <v-label class="font-weight-bold mb-1">Mês</v-label>
-                            <v-select v-model="mesRelUniEdit" :items="meses" label="Mês" hide-details color="primary" disabled></v-select>
-                            </v-col>
-
-                        <v-col cols="6">
-                            <v-label class="font-weight-bold mb-1">Ano</v-label>
-                            <v-select v-model="anoRelUniEdit" :items="anos" label="Ano" hide-details color="primary" disabled></v-select>
-                        </v-col>
-
-                        <v-col cols="4">
-                            <v-label class="font-weight-bold mb-1">Consumo (kWh)</v-label>
-                            <v-text-field v-model="consumoUniEdit" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                        </v-col>
-
-                        <v-col cols="4">
-                            <v-label class="font-weight-bold mb-1">Consumo (R$)</v-label>
-                            <v-text-field v-model="valorConUniEdit" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                        </v-col>
-
-                        <v-col cols="4">
-                            <v-label class="font-weight-bold mb-1">Saldo em Energia (kWh - Crédito)</v-label>
-                            <v-text-field v-model="saldoEnergiaEdit" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                        </v-col>
-
-                        <v-col cols="6">
-                            <v-label class="font-weight-bold mb-1">Ener. Inj-TUSD (kWh)</v-label>
-                            <v-text-field v-model="enerTusdUniEdit" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                        </v-col>
-
-                        <v-col cols="6">
-                            <v-label class="font-weight-bold mb-1">Valor (R$ - TUSD)</v-label>
-                            <v-text-field v-model="valorTusdUniEdit" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                        </v-col>
-
-                        <v-col cols="6">
-                            <v-label class="font-weight-bold mb-1">Ener. Inj-TE (kWh)</v-label>
-                            <v-text-field v-model="enerTeUniEdit" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                        </v-col>
-
-                        <v-col cols="6">
-                            <v-label class="font-weight-bold mb-1">Valor (R$ - TE)</v-label>
-                            <v-text-field v-model="valorTeUniEdit" variant="outlined" type="number"  hide-details color="primary"></v-text-field>
-                        </v-col>
-                        </v-row>
-                    </v-container>
-                </v-card-text>
-                <v-card-actions>
-                            <v-btn color="primary" block @click="saveChangesRelatorio(idRelaEdit)">Editar</v-btn>
-                </v-card-actions>
-            </v-card>
-        </v-dialog>
-    </v-row>
-
+          </table>
+          <p v-if="!bloco.lista.length" class="lx-empty">Nada lançado em {{ selectedYear }}.</p>
+        </div>
+      </div>
+    </LxDialog>
+
+    <!-- Editar geração -->
+    <LxDialog v-model="dialogGeraConfig3" titulo="Editar geração" :subtitulo="tipoGeracaoEdit === 'P' ? 'Projetada' : 'Real'" icone="✎" cor="var(--purple)" :largura="520">
+      <div v-if="showErrorCampoGeracaoEdit" class="lx-alert err">Preencha todos os campos.</div>
+      <div v-if="showErrorAlertGeracaoEdit" class="lx-alert err">Erro ao tentar editar a geração.</div>
+      <div v-if="showSuccessAlertGeracaoEdit" class="lx-alert ok">Geração editada com sucesso.</div>
+      <div class="lx-form">
+        <div class="lx-field"><label>Mês</label><input class="lx-input" :value="MESES_LONGO[mesGeracaoEdit - 1] ?? ''" disabled></div>
+        <div class="lx-field"><label>Ano</label><input class="lx-input" :value="anoGeracaoEdit" disabled></div>
+        <div class="lx-field full"><label for="ge-kwh">{{ tipoGeracaoEdit === 'R' ? 'Geração real' : 'Projeção' }} (kWh)</label><input id="ge-kwh" v-model="kwhGeracaoEdit" type="number" class="lx-input"></div>
+      </div>
+      <template #rodape>
+        <button class="lx-btn-ghost" @click="dialogGeraConfig3 = false">Fechar</button>
+        <button class="lx-btn" style="--c1:var(--purple);--c2:var(--teal)" @click="editarGeracao(idGeracaoEdit, tipoGeracaoEdit)">Salvar</button>
+      </template>
+    </LxDialog>
+
+    <!-- Lançar injeção -->
+    <LxDialog v-model="dialogInjecao1" titulo="Lançar injeção" subtitulo="Energia injetada na rede no mês" icone="⇄" cor="var(--purple)" :largura="560">
+      <div v-if="showErrorCampoInjecao" class="lx-alert err">Preencha todos os campos.</div>
+      <div v-if="showErrorMesInjecao" class="lx-alert err">Esse mês/ano já está preenchido.</div>
+      <div v-if="showSuccessAlertInjecao" class="lx-alert ok">Injeção enviada com sucesso.</div>
+      <div class="lx-form">
+        <div class="lx-field"><label for="in-mes">Mês</label>
+          <select id="in-mes" v-model="mesInjecao" class="lx-input"><option value="" disabled>Selecione</option><option v-for="m in meses" :key="m" :value="m">{{ MESES_LONGO[m - 1] }}</option></select>
+        </div>
+        <div class="lx-field"><label for="in-ano">Ano</label>
+          <select id="in-ano" v-model="anoInjecao" class="lx-input"><option value="" disabled>Selecione</option><option v-for="a in anos" :key="a" :value="a">{{ a }}</option></select>
+        </div>
+        <div class="lx-field"><label for="in-ckwh">Consumo (kWh)</label><input id="in-ckwh" v-model="consumoKWHUsina" type="number" class="lx-input"></div>
+        <div class="lx-field"><label for="in-crs">Consumo (R$)</label><input id="in-crs" v-model="consumoReaisUsina" type="number" class="lx-input"></div>
+        <div class="lx-field"><label for="in-p">Injetado ponta (kWh)</label><input id="in-p" v-model="pontaInjetado" type="number" class="lx-input"></div>
+        <div class="lx-field"><label for="in-fp">Injetado fora ponta (kWh)</label><input id="in-fp" v-model="pontaFInjetado" type="number" class="lx-input"></div>
+      </div>
+      <template #rodape>
+        <button class="lx-btn-ghost" @click="openDialogInjecao2">Editar injeções</button>
+        <span class="sp"></span>
+        <button class="lx-btn" style="--c1:var(--purple);--c2:var(--teal)" @click="sendInjecao">Salvar</button>
+      </template>
+    </LxDialog>
+
+    <!-- Injeções existentes -->
+    <LxDialog v-model="dialogInjecao2" titulo="Injeções lançadas" :subtitulo="`Ano ${selectedYear}`" icone="⇄" cor="var(--purple)" :largura="620">
+      <table class="lx-tbl">
+        <thead><tr><th>Mês</th><th class="r">Ponta</th><th class="r">Fora ponta</th><th class="r">Total</th><th class="c">Ações</th></tr></thead>
+        <tbody>
+          <tr v-for="injecao in injAnoLista" :key="injecao.id">
+            <td>{{ MESES_LONGO[injecao.mes - 1] }}</td>
+            <td class="r">{{ numero(Number(injecao.injetadoPonta) || 0) }}</td>
+            <td class="r">{{ numero(Number(injecao.injetadoFPonta) || 0) }}</td>
+            <td class="r"><b>{{ numero((Number(injecao.injetadoPonta) || 0) + (Number(injecao.injetadoFPonta) || 0)) }}</b></td>
+            <td class="c">
+              <div class="ud-acts">
+                <button class="lx-icon-btn" style="--c:var(--purple)" title="Editar" aria-label="Editar injeção" @click="openDialogInjecao3(injecao.id)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+                <button class="lx-icon-btn" style="--c:var(--red)" title="Excluir" aria-label="Excluir injeção" @click="deleteInjecao(injecao.id)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+                </button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p v-if="!injAnoLista.length" class="lx-empty">Nenhuma injeção lançada em {{ selectedYear }}.</p>
+    </LxDialog>
+
+    <!-- Editar injeção -->
+    <LxDialog v-model="dialogInjecao3" titulo="Editar injeção" icone="✎" cor="var(--purple)" :largura="560">
+      <div v-if="showErrorCampoInjecao" class="lx-alert err">Preencha todos os campos.</div>
+      <div v-if="showSuccessAlertInjecao" class="lx-alert ok">Injeção editada com sucesso.</div>
+      <div class="lx-form">
+        <div class="lx-field"><label>Mês</label><input class="lx-input" :value="MESES_LONGO[mesInjecao - 1] ?? ''" disabled></div>
+        <div class="lx-field"><label>Ano</label><input class="lx-input" :value="anoInjecao" disabled></div>
+        <div class="lx-field"><label for="ie-ckwh">Consumo (kWh)</label><input id="ie-ckwh" v-model="consumoKWHUsina" type="number" class="lx-input"></div>
+        <div class="lx-field"><label for="ie-crs">Consumo (R$)</label><input id="ie-crs" v-model="consumoReaisUsina" type="number" class="lx-input"></div>
+        <div class="lx-field"><label for="ie-p">Injetado ponta (kWh)</label><input id="ie-p" v-model="pontaInjetado" type="number" class="lx-input"></div>
+        <div class="lx-field"><label for="ie-fp">Injetado fora ponta (kWh)</label><input id="ie-fp" v-model="pontaFInjetado" type="number" class="lx-input"></div>
+      </div>
+      <template #rodape>
+        <button class="lx-btn-ghost" @click="dialogInjecao3 = false">Fechar</button>
+        <button class="lx-btn" style="--c1:var(--purple);--c2:var(--teal)" @click="editInjecao(injetadoId)">Salvar</button>
+      </template>
+    </LxDialog>
+
+    <!-- Novo relatório mensal da unidade -->
+    <LxDialog v-model="dialogNovoRelatorio" titulo="Novo relatório mensal" :subtitulo="`UC ${ucUnidadeRela} · ${nomeUnidadeRela}`" icone="+" cor="var(--green)" :largura="760">
+      <div v-if="showErrorAlertRelatorio" class="lx-alert err">Erro ao enviar o relatório.</div>
+      <div v-if="showErrorCampoRelatorio" class="lx-alert err">Preencha todos os campos.</div>
+      <div v-if="showErrorMesRelatorio" class="lx-alert err">Esse mês/ano já está preenchido.</div>
+      <div v-if="showSuccessAlertRelatorio" class="lx-alert ok">Relatório enviado com sucesso.</div>
+      <div class="lx-form c3">
+        <div class="lx-field"><label for="rn-mes">Mês</label>
+          <select id="rn-mes" v-model="mesRelUni" class="lx-input"><option value="" disabled>Selecione</option><option v-for="m in meses" :key="m" :value="m">{{ MESES_LONGO[m - 1] }}</option></select>
+        </div>
+        <div class="lx-field"><label for="rn-ano">Ano</label>
+          <select id="rn-ano" v-model="anoRelUni" class="lx-input"><option value="" disabled>Selecione</option><option v-for="a in anos" :key="a" :value="a">{{ a }}</option></select>
+        </div>
+        <div class="lx-field"><label for="rn-saldo">Saldo de energia (kWh, crédito)</label><input id="rn-saldo" v-model="saldoEnergiaUni" type="number" class="lx-input"></div>
+        <div class="lx-field"><label for="rn-ckwh">Consumo (kWh)</label><input id="rn-ckwh" v-model="consumoUni" type="number" class="lx-input"></div>
+        <div class="lx-field"><label for="rn-crs">Consumo (R$)</label><input id="rn-crs" v-model="valorConUni" type="number" class="lx-input"></div>
+        <div class="lx-field"></div>
+        <div class="lx-field"><label for="rn-etusd">Energia injetada TUSD (kWh)</label><input id="rn-etusd" v-model="enerTusdUni" type="number" class="lx-input"></div>
+        <div class="lx-field"><label for="rn-vtusd">Valor TUSD (R$)</label><input id="rn-vtusd" v-model="valorTusdUni" type="number" class="lx-input"></div>
+        <div class="lx-field"></div>
+        <div class="lx-field"><label for="rn-ete">Energia injetada TE (kWh)</label><input id="rn-ete" v-model="enerTeUni" type="number" class="lx-input"></div>
+        <div class="lx-field"><label for="rn-vte">Valor TE (R$)</label><input id="rn-vte" v-model="valorTeUni" type="number" class="lx-input"></div>
+      </div>
+      <template #rodape>
+        <button class="lx-btn-ghost" @click="dialogNovoRelatorio = false">Fechar</button>
+        <button class="lx-btn" style="--c1:var(--green);--c2:var(--teal)" @click="sendRelatorioUni">Salvar relatório</button>
+      </template>
+    </LxDialog>
+
+    <!-- Relatórios da unidade -->
+    <LxDialog v-model="dialogRelatorios" titulo="Relatórios da unidade" :subtitulo="`UC ${ucUnidadeRelatorio} · ${nomeUnidadeRelatorio}`" icone="▤" cor="var(--teal)" :largura="900">
+      <div class="lx-tbl-wrap">
+        <table class="lx-tbl">
+          <thead><tr><th>Mês/Ano</th><th class="r">Consumo (kWh)</th><th class="r">Compensado (kWh)</th><th class="r">Valor compensado</th><th class="r">Saldo (kWh)</th><th class="c">Ações</th></tr></thead>
+          <tbody>
+            <tr v-for="relatorio in relatoriosOrdenados" :key="relatorio.id">
+              <td>{{ MESES_CURTO[relatorio.mes - 1] }}/{{ relatorio.ano }}</td>
+              <td class="r">{{ numero(Number(relatorio.consumokWh) || 0) }}</td>
+              <td class="r">{{ numero((Number(relatorio.enerInjTUSD) || 0) + (Number(relatorio.enerInjTE) || 0)) }}</td>
+              <td class="r">{{ moeda((Number(relatorio.valorInjTUSD) || 0) + (Number(relatorio.valorInjTE) || 0)) }}</td>
+              <td class="r">{{ numero(Number(relatorio.saldoEnergia) || 0) }}</td>
+              <td class="c">
+                <div class="ud-acts">
+                  <button class="lx-icon-btn" style="--c:var(--purple)" title="Editar" aria-label="Editar relatório" @click="openDialogRelatoriosEditar(relatorio.id)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  </button>
+                  <button class="lx-icon-btn" style="--c:var(--red)" title="Excluir" aria-label="Excluir relatório" @click="deleteRelatorio(relatorio.id)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-if="!relatoriosOrdenados.length" class="lx-empty">Nenhum relatório lançado para esta unidade.</p>
+      </div>
+    </LxDialog>
+
+    <!-- Editar relatório -->
+    <LxDialog v-model="dialogRelatoriosEditar" titulo="Editar relatório" :subtitulo="`ID ${idRelaEdit}`" icone="✎" cor="var(--purple)" :largura="760">
+      <div v-if="showErrorAlertEdit" class="lx-alert err">Erro ao editar o relatório.</div>
+      <div v-if="showErrorCampoEdit" class="lx-alert err">Preencha todos os campos.</div>
+      <div v-if="showSuccessAlertEdit" class="lx-alert ok">Relatório editado com sucesso.</div>
+      <div class="lx-form c3">
+        <div class="lx-field"><label>Mês</label><input class="lx-input" :value="MESES_LONGO[mesRelUniEdit - 1] ?? ''" disabled></div>
+        <div class="lx-field"><label>Ano</label><input class="lx-input" :value="anoRelUniEdit" disabled></div>
+        <div class="lx-field"><label for="re-saldo">Saldo de energia (kWh, crédito)</label><input id="re-saldo" v-model="saldoEnergiaEdit" type="number" class="lx-input"></div>
+        <div class="lx-field"><label for="re-ckwh">Consumo (kWh)</label><input id="re-ckwh" v-model="consumoUniEdit" type="number" class="lx-input"></div>
+        <div class="lx-field"><label for="re-crs">Consumo (R$)</label><input id="re-crs" v-model="valorConUniEdit" type="number" class="lx-input"></div>
+        <div class="lx-field"></div>
+        <div class="lx-field"><label for="re-etusd">Energia injetada TUSD (kWh)</label><input id="re-etusd" v-model="enerTusdUniEdit" type="number" class="lx-input"></div>
+        <div class="lx-field"><label for="re-vtusd">Valor TUSD (R$)</label><input id="re-vtusd" v-model="valorTusdUniEdit" type="number" class="lx-input"></div>
+        <div class="lx-field"></div>
+        <div class="lx-field"><label for="re-ete">Energia injetada TE (kWh)</label><input id="re-ete" v-model="enerTeUniEdit" type="number" class="lx-input"></div>
+        <div class="lx-field"><label for="re-vte">Valor TE (R$)</label><input id="re-vte" v-model="valorTeUniEdit" type="number" class="lx-input"></div>
+      </div>
+      <template #rodape>
+        <button class="lx-btn-ghost" @click="dialogRelatoriosEditar = false">Fechar</button>
+        <button class="lx-btn" style="--c1:var(--purple);--c2:var(--teal)" @click="saveChangesRelatorio(idRelaEdit)">Salvar</button>
+      </template>
+    </LxDialog>
+  </div>
 </template>
 
 <style scoped>
-.table-wrapper {
-    overflow-x: auto;
-    scrollbar-width: thin; /* Para navegadores compatíveis */
-    scrollbar-color: #888 transparent; /* Cor da barra de rolagem e cor de fundo */
-  }
+.ud-tags { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.ud-end { font-size: 12.5px; color: var(--mut); }
+.ud-manu { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ud-manu-box { --c: var(--teal); background: rgba(255, 255, 255, .04); border-radius: 14px; padding: 12px 14px; border-left: 3px solid var(--c); display: flex; flex-direction: column; gap: 3px; }
+.ud-manu-box span { font-size: 11.5px; color: var(--mut); }
+.ud-manu-box b { font-size: 19px; font-weight: 700; color: var(--c); }
+.ud-manu-box small { font-size: 11.5px; color: var(--mut); }
+.ud-leg { justify-content: flex-end; margin-bottom: 6px; }
+.ud-nota { font-size: 11.5px; color: var(--mut); margin: 6px 0 12px; }
+.ud-mtbl td, .ud-mtbl th { padding: 8px 9px; }
+.ud-mtbl td:first-child { color: var(--mut); font-weight: 600; white-space: nowrap; }
+.ud-mut { color: var(--mut); opacity: .6; }
+.ud-tend { font-size: 14px; font-weight: 700; }
+.ud-acts { display: flex; gap: 6px; justify-content: center; }
+.ud-txt { font-size: 14px; color: var(--tx); line-height: 1.5; }
+.ud-sub { background: rgba(255, 255, 255, .03); border: 1px solid var(--line2); border-radius: 16px; padding: 12px; min-width: 0; }
+.ud-sub h4 { font-size: 14px; font-weight: 600; margin: 0 0 8px; }
 
-  /* Estilizando o indicador da barra de rolagem */
-  .table-wrapper::-webkit-scrollbar {
-    width: 8px; /* Largura da barra de rolagem */
-  }
-
-  /* Estilizando a alça da barra de rolagem */
-  .table-wrapper::-webkit-scrollbar-thumb {
-    background-color: #888; /* Cor da alça da barra de rolagem */
-    border-radius: 4px; /* Bordas arredondadas */
-  }
-
+/* Ordem de serviço: folha branca (é o que vai para o PDF) */
+.ud-paper-wrap { background: rgba(255, 255, 255, .04); border-radius: 14px; padding: 14px; overflow-x: auto; }
+.ud-paper { background: #fff; color: #111; padding: 28px 32px; border-radius: 6px; min-width: 640px; font-family: Arial, Helvetica, sans-serif; }
+.ud-os-logos { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.ud-paper h2 { text-align: center; font-size: 22px; margin: 6px 0 2px; color: #111; }
+.ud-os-sub { text-align: center; font-size: 13px; color: #333; margin-bottom: 16px; }
+.ud-os { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ud-os th, .ud-os td { border: 1px solid #cfd4dc; padding: 8px 10px; text-align: center; color: #111; }
+.ud-os th { background: #e8e8e8; font-weight: 700; }
+.ud-os th.hd { background: #5d87ff; color: #fff; }
+.ud-os-ft { display: flex; justify-content: space-between; font-size: 12px; color: #333; margin-top: 18px; padding-top: 10px; border-top: 1px solid #cfd4dc; }
+@media (max-width: 640px) { .ud-manu { grid-template-columns: 1fr; } }
 </style>

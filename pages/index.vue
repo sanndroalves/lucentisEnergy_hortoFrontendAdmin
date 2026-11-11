@@ -5,7 +5,6 @@ import { API_BASE_URL } from '~/base/link';
 import { useMapaEnergia } from '~/composables/useMapaEnergia';
 import { useReferenciaAtual } from '~/composables/useReferenciaAtual';
 import { useEnergyFormat } from '~/composables/useEnergyFormat';
-import { useClimaHoje } from '~/composables/useClimaHoje';
 
 useHead({
   title: 'Início',
@@ -224,32 +223,6 @@ const alertas = computed(() => {
     .sort((a, b) => b.qtd - a.qtd);
 });
 
-// ─── Varredura de contas faltando ───
-// Unidades L ou D devem ter um relatório de compensação para cada mês do ano,
-// de janeiro até o último mês já importado (refComp). Cada mês sem relatório
-// conta como uma conta faltando, agrupada por secretaria.
-const SECRETARIAS = { E: 'Educação', S: 'Saúde', O: 'Outros', I: 'Iluminação', P: 'Praças' };
-const contasFaltando = computed(() => {
-  const { ano, mes } = refComp.value;
-  const ativas = lUnidades.value.filter(u => u.status === 'L' || u.status === 'D');
-  const tem = new Set(lRelatorios.value.filter(r => r.ano == ano).map(r => `${r.idUnidadeCompensa}|${Number(r.mes)}`));
-  const porMes = [];
-  for (let m = mes; m >= 1; m--) {
-    const sec = {};
-    let total = 0;
-    ativas.forEach(u => {
-      if (!tem.has(`${u.id}|${m}`)) { sec[u.secretaria] = (sec[u.secretaria] || 0) + 1; total++; }
-    });
-    if (total) {
-      porMes.push({
-        mes: m, total,
-        sec: Object.entries(sec).map(([s, q]) => ({ nome: SECRETARIAS[s] ?? s, q })).sort((a, b) => b.q - a.q),
-      });
-    }
-  }
-  return { ano, ateMes: mes, ativas: ativas.length, total: porMes.reduce((s, x) => s + x.total, 0), porMes };
-});
-
 // ─── Manutenções ───
 const manut = computed(() => ({
   programadas: lManutencoes.value.filter(m => m.status === '1').length,
@@ -348,65 +321,9 @@ const porAno = computed(() => {
 });
 const tipLado = (i) => (i < 2 ? 'l' : i > 9 ? 'r' : '');
 
-// ─── Dock de navegação ───
-const NAV = [
-  { n: 'Início', i: '◉', a: '--teal', b: '--green', s: [] },
-  { n: 'Fotovoltaico', i: '☀', a: '--orange', b: '--red', s: [['Usinas', '/usinas/'], ['Manutenções', '/manutencoes/'], ['Checklist', '/checklist/'], ['Gráficos', '/graficos/']] },
-  { n: 'Gerenciamento', i: '▦', a: '--purple', b: '--teal', s: [['Relatórios', '/relatorios/'], ['Lista de Rateio', '/lista/'], ['Dados', '/dados/']] },
-  { n: 'UCs Públicas', i: '✦', a: '--green', b: '--teal', s: [['Iluminação', '/iluminacao/'], ['Prédios', '/predios/']] },
-];
-const navAtual = ref(-1);
-const clicarNav = (k) => { navAtual.value = !NAV[k].s.length || navAtual.value === k ? -1 : k; };
-const ir = (rota) => { navAtual.value = -1; navigateTo(rota); };
-
-// ─── Clima de hoje e previsão de geração ───
-const clima = useClimaHoje();
-const pushAberto = ref(false);
-const gaugeW = ref(0);
-let pushTimer;
-const NIVEL = {
-  alta:  { lv: 'Ótima',    c: '--green' },
-  media: { lv: 'Moderada', c: '--orange' },
-  baixa: { lv: 'Baixa',    c: '--red' },
-};
-const climaInfo = computed(() => {
-  const p = clima.previsao.value;
-  const n = NIVEL[clima.nivel.value] ?? { lv: '—', c: '--mut' };
-  const rad = clima.radiacaoKwh.value;
-  // estimativa: potência instalada (kWp) × horas de sol pleno × PR 0,75
-  const estimado = rad != null ? (potenciaKwp.value * rad * 0.75) / 1000 : null;
-  return {
-    ...n,
-    icone: clima.tempo.value.icone,
-    titulo: p ? `${clima.tempo.value.texto}${p.tMax != null ? `, ${numero(p.tMax, 0)} °C` : ''}` : '',
-    chuva: p?.chuvaPct,
-    w: rad != null ? Math.min(100, Math.round((rad / 7.2) * 100)) : 0,
-    rad: rad != null ? numero(rad, 1) : '—',
-    estimado: estimado != null ? numero(estimado, 1) : '—',
-  };
-});
-function mostrarClima() {
-  pushAberto.value = true;
-  gaugeW.value = 0;
-  requestAnimationFrame(() => requestAnimationFrame(() => { gaugeW.value = climaInfo.value.w; }));
-  clearTimeout(pushTimer);
-  pushTimer = setTimeout(() => { pushAberto.value = false; }, 11000);
-}
-const alternarClima = () => (pushAberto.value ? (pushAberto.value = false) : mostrarClima());
-
-// notificação de contas
-const contasAberto = ref(false);
-let contasTimer, timerContas;
-function mostrarContas() {
-  contasAberto.value = true;
-  clearTimeout(contasTimer);
-  contasTimer = setTimeout(() => { contasAberto.value = false; }, 15000);
-}
-const alternarContas = () => (contasAberto.value ? (contasAberto.value = false) : mostrarContas());
-
 // ─── Nebulosa animada (canvas) ───
 const orb = ref(null);
-let raf = 0, S = 520, ctx = null, timerInicial;
+let raf = 0, S = 520, ctx = null;
 function ajustar() {
   const cv = orb.value; if (!cv) return;
   const r = cv.getBoundingClientRect(), d = Math.min(devicePixelRatio || 1, 2);
@@ -433,7 +350,7 @@ function desenhar(t) {
   if (!parado) raf = requestAnimationFrame(desenhar);
 }
 function teclado(e) {
-  if (e.key === 'Escape') { modal.value = false; navAtual.value = -1; }
+  if (e.key === 'Escape') modal.value = false;
 }
 
 onMounted(() => {
@@ -443,18 +360,11 @@ onMounted(() => {
   addEventListener('resize', ajustar);
   addEventListener('keydown', teclado);
   raf = requestAnimationFrame(desenhar);
-  clima.carregar();
-  timerInicial = setTimeout(mostrarClima, 1500);
-  if (contasFaltando.value.total) timerContas = setTimeout(mostrarContas, 3000);
 });
 onBeforeUnmount(() => {
   cancelAnimationFrame(raf);
   removeEventListener('resize', ajustar);
   removeEventListener('keydown', teclado);
-  clearTimeout(pushTimer);
-  clearTimeout(timerInicial);
-  clearTimeout(contasTimer);
-  clearTimeout(timerContas);
 });
 </script>
 
@@ -819,67 +729,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <!-- ── Dock de navegação ── -->
-    <nav class="dock" aria-label="Blocos do sistema">
-      <button v-for="(n, k) in NAV" :key="n.n" class="nv" :class="{ on: k === 0 || navAtual === k }"
-        :style="{ '--c1': `var(${n.a})`, '--c2': `var(${n.b})` }" @click="clicarNav(k)">
-        <span class="rg"><b>{{ n.i }}</b></span><span class="lb">{{ n.n }}</span>
-      </button>
-    </nav>
-    <div class="fly" :class="{ on: navAtual > 0 }" :style="navAtual > 0 ? { '--c1': `var(${NAV[navAtual].a})`, '--c2': `var(${NAV[navAtual].b})` } : {}">
-      <template v-if="navAtual > 0">
-        <strong>{{ NAV[navAtual].n }}</strong>
-        <button v-for="s in NAV[navAtual].s" :key="s[1]" class="chip" @click="ir(s[1])">{{ s[0] }}</button>
-        <div style="margin-top:8px">
-          <button class="btn" :style="{ '--c1': `var(${NAV[navAtual].a})`, '--c2': `var(${NAV[navAtual].b})` }" @click="ir(NAV[navAtual].s[0][1])">Entrar em {{ NAV[navAtual].n }}</button>
-        </div>
-      </template>
-    </div>
-
-    <!-- ── Perfil + clima ── -->
-    <div class="perfil"><LayoutFullVerticalHeaderProfileDD /></div>
-    <button class="bell contas" :aria-label="`Contas faltando: ${contasFaltando.total}`" :style="{ '--pc': contasFaltando.total ? 'var(--red)' : 'var(--green)' }" @click="alternarContas">
-      📋<span v-if="contasFaltando.total" class="badge-n">{{ contasFaltando.total > 99 ? '99+' : contasFaltando.total }}</span><i v-else></i>
-    </button>
-    <button class="bell" aria-label="Clima de hoje e previsão de geração" :style="{ '--pc': `var(${climaInfo.c})` }" @click="alternarClima">🔔<i></i></button>
-
-    <div class="notifs">
-    <Transition name="slide">
-    <div v-if="contasAberto" class="push" role="status" :style="{ '--pc': contasFaltando.total ? 'var(--orange)' : 'var(--green)' }">
-      <div class="ph">
-        <span>{{ contasFaltando.total ? '📋' : '✅' }}</span>
-        <strong v-if="contasFaltando.total">{{ numero(contasFaltando.total) }} {{ contasFaltando.total === 1 ? 'conta faltando' : 'contas faltando' }} em {{ contasFaltando.ano }}</strong>
-        <strong v-else>Todas as contas em dia em {{ contasFaltando.ano }}</strong>
-        <button class="pc" aria-label="Fechar aviso" @click="contasAberto = false">×</button>
-      </div>
-      <div class="pl">Varredura de {{ numero(contasFaltando.ativas) }} unidades ligadas/desligadas, de Jan a {{ MESES_CURTO[contasFaltando.ateMes - 1] }}/{{ contasFaltando.ano }}</div>
-      <div v-if="contasFaltando.total" class="cf">
-        <div v-for="m in contasFaltando.porMes" :key="m.mes" class="cfm">
-          <div class="cfh"><b>{{ MESES_LONGO[m.mes - 1] }}</b><span>{{ m.total }} {{ m.total === 1 ? 'conta' : 'contas' }}</span></div>
-          <div class="cfs"><span v-for="s in m.sec" :key="s.nome" class="tag">{{ s.nome }} · {{ s.q }}</span></div>
-        </div>
-      </div>
-      <button v-if="contasFaltando.total" class="cfbtn" @click="ir('/relatorios/')">Abrir Relatórios</button>
-    </div>
-    </Transition>
-
-    <Transition name="slide">
-    <div v-if="pushAberto" class="push" role="status" :style="{ '--pc': `var(${climaInfo.c})` }">
-      <div class="ph">
-        <span>{{ clima.carregando.value ? '⏳' : clima.erro.value ? '⚠️' : climaInfo.icone }}</span>
-        <strong v-if="clima.carregando.value">Carregando clima de hoje…</strong>
-        <strong v-else-if="clima.erro.value">Não foi possível carregar o clima agora</strong>
-        <strong v-else>Clima de hoje: {{ climaInfo.titulo }}</strong>
-        <button class="pc" aria-label="Fechar aviso" @click="pushAberto = false">×</button>
-      </div>
-      <template v-if="!clima.carregando.value && !clima.erro.value">
-        <div class="pl">Previsão de geração: <b>{{ climaInfo.lv }}</b><template v-if="climaInfo.chuva != null"> · chuva {{ climaInfo.chuva }}%</template></div>
-        <div class="gz"><i :style="{ '--w': gaugeW + '%' }"></i></div>
-        <div class="pf">Radiação solar prevista: {{ climaInfo.rad }} kWh/m² · geração estimada hoje: {{ climaInfo.estimado }} MWh</div>
-      </template>
-    </div>
-    </Transition>
-    </div>
+    <LayoutFullMain :marca="false" />
   </div>
 </template>
 
@@ -964,7 +814,7 @@ onBeforeUnmount(() => {
 .note strong{color:var(--green)}
 
 /* ── Modal de análise ── */
-.modal{position:fixed;inset:0;background:rgba(3,6,18,.8);backdrop-filter:blur(8px);display:none;place-items:center;padding:16px;z-index:30}
+.modal{position:fixed;inset:0;background:rgba(3,6,18,.8);backdrop-filter:blur(8px);display:none;place-items:center;padding:16px;z-index:1010}
 .modal.on{display:grid}
 .panel{background:var(--bg2);border:1px solid var(--line);border-radius:24px;width:min(1180px,100%);max-height:92vh;overflow:auto;padding:22px;position:relative}
 .x{position:absolute;right:14px;top:10px;background:none;border:0;color:var(--tx);font-size:26px;cursor:pointer}
@@ -1033,59 +883,10 @@ onBeforeUnmount(() => {
 .urb i{height:10px;border-radius:5px;flex:none;min-width:2px}
 .urb b{white-space:nowrap;font-weight:600}
 
-/* ── Dock / perfil / clima ── */
-.dock{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));display:flex;gap:4px;padding:7px;border-radius:999px;background:rgba(10,15,40,.74);border:1px solid var(--line);backdrop-filter:blur(16px);z-index:15;box-shadow:0 16px 50px -14px #000}
-.nv{all:unset;cursor:pointer;display:flex;align-items:center;gap:9px;padding:5px 16px 5px 5px;border-radius:999px;color:var(--mut);font:600 13px 'Sora',system-ui,sans-serif;transition:background .25s,color .25s;white-space:nowrap}
-.nv:hover,.nv.on{background:rgba(255,255,255,.09);color:#fff}
-.nv:focus-visible{outline:2px solid #fff;outline-offset:2px}
-.rg{position:relative;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;flex:none}
-.rg::before{content:"";position:absolute;inset:0;border-radius:50%;background:conic-gradient(var(--c1),var(--c2),var(--c1));animation:spin 4s linear infinite}
-.rg b{position:relative;width:31px;height:31px;border-radius:50%;background:#0b1030;display:grid;place-items:center;font-size:14px;color:#fff;font-weight:400}
-.nv.on .rg{box-shadow:0 0 20px var(--c1)}
-@keyframes spin{to{transform:rotate(1turn)}}
-.fly{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translate(-50%,16px) scale(.96);opacity:0;pointer-events:none;background:rgba(10,15,40,.92);border:1px solid var(--c1,var(--line));border-radius:22px;padding:14px;backdrop-filter:blur(16px);box-shadow:0 0 44px -10px var(--c1,#000);transition:.3s;z-index:16;width:min(480px,calc(100vw - 24px));text-align:center}
-.fly.on{transform:translate(-50%,0) scale(1);opacity:1;pointer-events:auto}
-.fly strong{display:block;font-size:14px;margin-bottom:10px}
-.chip{font:600 13px 'Sora',system-ui,sans-serif;border:1px solid var(--line);background:rgba(255,255,255,.07);color:#fff;border-radius:99px;padding:8px 14px;cursor:pointer;margin:3px;transition:background .2s}
-.chip:hover{background:linear-gradient(120deg,var(--c1),var(--c2))}
-.perfil{position:fixed;top:calc(14px + env(safe-area-inset-top,0px));right:122px;z-index:24;line-height:0}
-.bell.contas{right:68px;font-size:19px}
-.badge-n{position:absolute;top:-4px;right:-4px;min-width:20px;height:20px;padding:0 5px;border-radius:99px;background:var(--red);color:#fff;font:700 10.5px/20px 'Sora',system-ui,sans-serif;box-shadow:0 0 12px var(--red);border:2px solid var(--bg)}
-/* ícone "!" do monitoramento pulsando quando há alertas */
-.ic.alerta{position:relative;background:linear-gradient(135deg,#ff6b4a,#ff2d55);animation:alertaPulso 1.4s ease-in-out infinite}
-.ic.alerta::before,.ic.alerta::after{content:"";position:absolute;inset:0;border-radius:12px;border:2px solid #ff6b4a;animation:alertaOnda 1.4s ease-out infinite;pointer-events:none}
-.ic.alerta::after{animation-delay:.7s}
-@keyframes alertaPulso{0%,100%{transform:scale(1);box-shadow:0 0 0 0 rgba(255,107,74,.6)}50%{transform:scale(1.1);box-shadow:0 0 22px 4px rgba(255,107,74,.55)}}
-@keyframes alertaOnda{0%{transform:scale(1);opacity:.9}100%{transform:scale(1.9);opacity:0}}
-.bell{position:fixed;top:calc(14px + env(safe-area-inset-top,0px));right:14px;width:46px;height:46px;border-radius:50%;border:1px solid var(--line);background:rgba(10,15,40,.74);backdrop-filter:blur(12px);cursor:pointer;font-size:20px;z-index:24;color:#fff}
-.bell i{position:absolute;top:6px;right:6px;width:10px;height:10px;border-radius:50%;background:var(--pc,var(--green));box-shadow:0 0 10px var(--pc,var(--green))}
-.bell:focus-visible,.pc:focus-visible{outline:2px solid #fff;outline-offset:2px}
-.notifs{position:fixed;top:calc(68px + env(safe-area-inset-top,0px));right:14px;width:min(360px,calc(100vw - 28px));display:flex;flex-direction:column;gap:10px;z-index:25;pointer-events:none;max-height:calc(100vh - 170px);overflow-y:auto;overflow-x:hidden}
-.push{pointer-events:auto;width:100%;background:rgba(13,19,48,.92);border:1px solid var(--pc);border-radius:20px;padding:14px;backdrop-filter:blur(16px);box-shadow:0 18px 50px -12px rgba(0,0,0,.75),0 0 36px -12px var(--pc)}
-.slide-enter-active,.slide-leave-active{transition:transform .55s cubic-bezier(.2,.9,.3,1.15),opacity .4s}
-.slide-enter-from,.slide-leave-to{transform:translateX(125%);opacity:0}
-.cf{display:grid;gap:8px;max-height:240px;overflow-y:auto;padding-right:2px}
-.cfm{background:rgba(255,255,255,.04);border-radius:12px;padding:8px 10px}
-.cfh{display:flex;justify-content:space-between;align-items:baseline;font-size:13px}
-.cfh span{color:var(--pc);font-weight:600;font-size:12px}
-.cfs{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
-.cfs .tag{color:var(--tx)}
-.cfbtn{all:unset;box-sizing:border-box;display:block;width:100%;text-align:center;margin-top:12px;padding:9px 14px;border-radius:999px;cursor:pointer;font:600 13px 'Sora',system-ui,sans-serif;color:#fff;background:linear-gradient(120deg,var(--orange),#ff5f6d);box-shadow:0 8px 24px -10px var(--orange)}
-.cfbtn:focus-visible{outline:2px solid #fff;outline-offset:2px}
-.ph{display:flex;align-items:center;gap:11px}
-.ph span{font-size:30px}
-.ph strong{flex:1;font-size:14px;line-height:1.3}
-.pc{background:none;border:0;color:var(--mut);font-size:22px;cursor:pointer}
-.pl{margin:12px 0 7px;font-size:13px;color:var(--mut)}
-.pl b{color:var(--pc);font-size:15px}
-.gz{height:8px;background:rgba(255,255,255,.1);border-radius:9px;overflow:hidden}
-.gz i{display:block;height:100%;width:var(--w);background:linear-gradient(90deg,var(--pc),rgba(255,255,255,.55));border-radius:9px;transition:width 1s ease}
-.pf{margin-top:9px;font-size:12px;color:var(--mut)}
 @media(max-width:1000px){.stage{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.center{grid-column:1/-1;order:-1;position:static}}
 @media(max-width:640px){
   .lx main{padding:18px 16px 120px}
   .stage{grid-template-columns:minmax(0,1fr)}.badge img{height:72px}
-  .nv .lb{display:none}.nv{padding:5px}.nv.on{padding:5px 14px 5px 5px}.nv.on .lb{display:inline}
   .panel{padding:16px}
   .bc{gap:2px}.bv{font-size:9px}
 }

@@ -1,188 +1,213 @@
 <script setup>
-import { useHead  } from '@vueuse/head';
+import { ref, computed } from 'vue';
+import { useHead } from '@vueuse/head';
 import { API_BASE_URL } from '~/base/link';
+import { useEnergyFormat } from '~/composables/useEnergyFormat';
 
 useHead({ title: 'Usinas' });
-definePageMeta({ middleware: 'sidebase-auth' })
+definePageMeta({ middleware: 'sidebase-auth' });
 
-import { ref } from "vue";
-import UiParentCard from "@/components/shared/UiParentCard.vue";
-const dialog = ref(false);
-
-const usinaId       = ref("");
-const ucUsina       = ref("");
-const nomeUsina     = ref("");
-const dataInicioUsina = ref("");
-const potenciaUsina = ref("");
-const enderecoUsina = ref("");
-const statusUsina   = ref("");
-const tensaoUsina   = ref("");
-
-const showSuccessAlert = ref(false);
-const showErrorAlert   = ref(false);
-const showErrorCampo   = ref(false);
+const { numero } = useEnergyFormat();
 
 const { data: usinas } = await useFetch(`${API_BASE_URL}/usina/`);
 
-const getStatusLabel = (s) => ({ L:'Ligado', D:'Desligado', M:'Manutenção' }[s] ?? 'Desconhecido');
-const getStatusColorClass = (s) => ({ L:'bg-success', D:'bg-error', M:'bg-warning' }[s] ?? 'bg-primary');
+// ─── Status ───
+const STATUS = {
+  L: { txt: 'Ligada', c: 'var(--green)' },
+  D: { txt: 'Desligada', c: 'var(--red)' },
+  M: { txt: 'Manutenção', c: 'var(--orange)' },
+};
+const statusInfo = (s) => STATUS[s] ?? { txt: 'Desconhecido', c: 'var(--mut)' };
+const ORDEM = { L: 0, M: 1, D: 2 };
+
+const lista = computed(() => [...(usinas.value ?? [])].sort((a, b) => (ORDEM[a.status] ?? 9) - (ORDEM[b.status] ?? 9) || String(a.nome).localeCompare(String(b.nome))));
+const ligadas    = computed(() => lista.value.filter(u => u.status === 'L').length);
+const desligadas = computed(() => lista.value.filter(u => u.status === 'D').length);
+const manutencao = computed(() => lista.value.filter(u => u.status === 'M').length);
+const potenciaKwp = computed(() => lista.value.reduce((s, u) => s + (parseFloat(u.potencia) || 0), 0));
+const potenciaTxt = computed(() => (potenciaKwp.value >= 1000 ? `${numero(potenciaKwp.value / 1000, 2)} MWp` : `${numero(potenciaKwp.value, 0)} kWp`));
+
+// ─── Busca / filtro / visualização ───
+const busca = ref('');
+const filtro = ref('T');
+const visao = ref('cards');
+const FILTROS = [
+  { v: 'T', txt: 'Todas', c: 'var(--teal)' },
+  { v: 'L', txt: 'Ligadas', c: 'var(--green)' },
+  { v: 'M', txt: 'Manutenção', c: 'var(--orange)' },
+  { v: 'D', txt: 'Desligadas', c: 'var(--red)' },
+];
+const normalizar = (t) => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const filtradas = computed(() => {
+  const q = normalizar(busca.value.trim());
+  return lista.value.filter(u =>
+    (filtro.value === 'T' || u.status === filtro.value) &&
+    (!q || normalizar(u.nome).includes(q) || String(u.uc ?? '').includes(q) || normalizar(u.endereco).includes(q)),
+  );
+});
+const dataBR = (d) => {
+  if (!d) return '—';
+  const dt = new Date(/^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d}T00:00:00` : d);
+  return isNaN(dt) ? '—' : dt.toLocaleDateString('pt-BR');
+};
+
+// ─── Edição (mesma lógica de antes: PUT /usina/:id) ───
+const dialog = ref(false);
+const usinaId = ref('');
+const ucUsina = ref('');
+const nomeUsina = ref('');
+const dataInicioUsina = ref('');
+const potenciaUsina = ref('');
+const enderecoUsina = ref('');
+const statusUsina = ref('');
+const tensaoUsina = ref('');
+const showSuccessAlert = ref(false);
+const showErrorAlert = ref(false);
+const showErrorCampo = ref(false);
+const salvando = ref(false);
 
 const openDialog = async (idUsina) => {
+  showErrorAlert.value = false; showErrorCampo.value = false; showSuccessAlert.value = false;
   const { data: u } = await useFetch(`${API_BASE_URL}/usina/${idUsina}`);
-  ucUsina.value       = u.value.uc;
-  nomeUsina.value     = u.value.nome;
+  ucUsina.value = u.value.uc;
+  nomeUsina.value = u.value.nome;
   dataInicioUsina.value = u.value.dataInicio;
   potenciaUsina.value = u.value.potencia;
   enderecoUsina.value = u.value.endereco;
-  statusUsina.value   = u.value.status;
-  tensaoUsina.value   = u.value.tensao;
-  usinaId.value       = idUsina;
+  statusUsina.value = u.value.status;
+  tensaoUsina.value = u.value.tensao;
+  usinaId.value = idUsina;
   dialog.value = true;
 };
 
-const closeDialog = () => {
-  showErrorAlert.value = false; showErrorCampo.value = false; showSuccessAlert.value = false;
-  dialog.value = false;
-};
-
 const saveChanges = async () => {
+  showErrorAlert.value = false; showSuccessAlert.value = false;
   if (!ucUsina.value || !nomeUsina.value || !dataInicioUsina.value || !potenciaUsina.value || !enderecoUsina.value || !statusUsina.value) {
     showErrorCampo.value = true; return;
   }
+  showErrorCampo.value = false;
+  salvando.value = true;
   try {
     const response = await useFetch(`${API_BASE_URL}/usina/${usinaId.value}`, {
-      method: "PUT",
-      body: { uc: ucUsina, nome: nomeUsina, dataInicio: dataInicioUsina, potencia: potenciaUsina, endereco: enderecoUsina, status: statusUsina, tensao: tensaoUsina },
-      key: "usinaPut",
+      method: 'PUT',
+      body: {
+        uc: ucUsina.value, nome: nomeUsina.value, dataInicio: dataInicioUsina.value, potencia: potenciaUsina.value,
+        endereco: enderecoUsina.value, status: statusUsina.value, tensao: tensaoUsina.value,
+      },
+      key: 'usinaPut',
     });
-    if (response) { showSuccessAlert.value = true; showErrorCampo.value = false; }
-    else { showErrorAlert.value = true; showErrorCampo.value = false; }
-  } catch { showErrorAlert.value = true; showErrorCampo.value = false; }
+    if (response && !response.error?.value) showSuccessAlert.value = true;
+    else showErrorAlert.value = true;
+  } catch { showErrorAlert.value = true; }
   const { data: upd } = await useFetch(`${API_BASE_URL}/usina/`);
-  usinas.value = upd._value;
+  usinas.value = upd.value;
+  salvando.value = false;
 };
-
-usinas.value.sort((a, b) => (a.status === 'L' ? -1 : b.status === 'L' ? 1 : 0));
-
-const usinasLigadas   = usinas.value.filter(i => i.status === 'L');
-const usinasDesligadas = usinas.value.filter(i => i.status === 'D' || i.status === 'M');
-const mudarVisu = ref(0);
-
-const ANOS  = [2023,2024,2025,2026,2027,2028];
-const MESES = [1,2,3,4,5,6,7,8,9,10,11,12];
 </script>
 
 <template>
-<div class="us-root">
-
-  <!-- ══════ HEADER ══════ -->
-  <div class="us-header">
-    <div class="us-header-left">
-      <div class="us-header-icon">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round">
-          <path d="M13 10V3L4 14h7v7l9-11h-7z"/>
-        </svg>
-      </div>
+  <div class="lx-page">
+    <!-- Cabeçalho -->
+    <header class="lx-head">
       <div>
-        <nav class="us-breadcrumb"><a href="/">Início</a><span>›</span><a href="/">Eficiência</a><span>›</span><span>Usinas</span></nav>
-        <h1 class="us-title">Usinas Fotovoltaicas</h1>
-        <p class="us-sub">Gestão e monitoramento das usinas geradoras</p>
+        <nav class="lx-crumb" aria-label="Você está em">
+          <NuxtLink to="/">Início</NuxtLink><span class="sep">›</span><span>Fotovoltaico</span><span class="sep">›</span><b>Usinas</b>
+        </nav>
+        <h1 class="lx-title">Usinas <span class="grad">fotovoltaicas</span></h1>
+        <p class="lx-sub">Gestão e monitoramento das usinas geradoras do município</p>
       </div>
-    </div>
-    <img src="https://i.imgur.com/wBFBoIm.png" class="us-header-img" alt="">
-  </div>
+      <div class="lx-head-actions">
+        <NuxtLink to="/usinas/criar/" class="lx-btn" style="--c1:var(--orange);--c2:#ff5f6d">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Nova usina
+        </NuxtLink>
+      </div>
+    </header>
 
-  <!-- ══════ KPI CARDS ══════ -->
-  <div class="us-kpi-row">
-    <div class="us-kpi us-kpi-green">
-      <div class="us-kpi-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg></div>
-      <span class="us-kpi-label">Ligadas</span>
-      <span class="us-kpi-val">{{ usinasLigadas.length }}</span>
-      <span class="us-kpi-note">operando normalmente</span>
-      <div class="us-kpi-bottom"></div>
-    </div>
-    <div class="us-kpi us-kpi-rose">
-      <div class="us-kpi-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg></div>
-      <span class="us-kpi-label">Desligadas / Manutenção</span>
-      <span class="us-kpi-val">{{ usinasDesligadas.length }}</span>
-      <span class="us-kpi-note">fora de operação</span>
-      <div class="us-kpi-bottom"></div>
-    </div>
-    <div class="us-kpi us-kpi-indigo">
-      <div class="us-kpi-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
-      <span class="us-kpi-label">Total</span>
-      <span class="us-kpi-val">{{ usinas.length }}</span>
-      <span class="us-kpi-note">usinas cadastradas</span>
-      <div class="us-kpi-bottom"></div>
-    </div>
-  </div>
+    <!-- KPIs -->
+    <section class="lx-kpis">
+      <div class="lx-kpi" style="--c:var(--teal)"><span class="ico">☀</span><span>Usinas cadastradas</span><b>{{ lista.length }}</b><small>no sistema</small></div>
+      <div class="lx-kpi" style="--c:var(--green)"><span class="ico">⚡</span><span>Ligadas</span><b>{{ ligadas }}</b><small>operando normalmente</small></div>
+      <div class="lx-kpi" style="--c:var(--orange)"><span class="ico">⚙</span><span>Em manutenção</span><b>{{ manutencao }}</b><small>temporariamente paradas</small></div>
+      <div class="lx-kpi" style="--c:var(--red)"><span class="ico">⏻</span><span>Desligadas</span><b>{{ desligadas }}</b><small>fora de operação</small></div>
+      <div class="lx-kpi" style="--c:var(--purple)"><span class="ico">▦</span><span>Potência instalada</span><b>{{ potenciaTxt }}</b><small>soma das usinas</small></div>
+    </section>
 
-  <!-- ══════ TABELA / CARDS ══════ -->
-  <div class="us-body">
-    <div class="us-table-card">
-
-      <div class="us-card-hd">
-        <div class="us-card-hd-left">
-          <div class="us-card-num">01</div>
-          <div>
-            <h3 class="us-card-title">Lista de Usinas</h3>
-            <p class="us-card-sub">Clique em ver para acessar os detalhes individuais</p>
+    <!-- Lista -->
+    <section class="lx-panel">
+      <div class="lx-panel-hd">
+        <div>
+          <h3><span class="lx-ic" style="--c:var(--orange)">☀</span>Lista de usinas</h3>
+          <p>{{ filtradas.length }} de {{ lista.length }} {{ lista.length === 1 ? 'usina' : 'usinas' }}</p>
+        </div>
+        <div class="us-tools">
+          <label class="lx-search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input v-model="busca" class="lx-input" type="search" placeholder="Buscar por nome, UC ou endereço" aria-label="Buscar usina">
+          </label>
+          <div class="lx-seg" role="group" aria-label="Filtrar por status">
+            <button v-for="f in FILTROS" :key="f.v" :class="{ on: filtro === f.v }" :style="{ '--c': f.c }" @click="filtro = f.v">{{ f.txt }}</button>
+          </div>
+          <div class="lx-seg" role="group" aria-label="Visualização">
+            <button :class="{ on: visao === 'cards' }" title="Cartões" aria-label="Ver em cartões" @click="visao = 'cards'">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+            </button>
+            <button :class="{ on: visao === 'tabela' }" title="Tabela" aria-label="Ver em tabela" @click="visao = 'tabela'">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>
+            </button>
           </div>
         </div>
-        <div class="us-card-hd-right">
-          <NuxtLink to="/usinas/criar/">
-            <button class="us-btn-add">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              Nova Usina
-            </button>
-          </NuxtLink>
-          <button class="us-btn-toggle" @click="mudarVisu = mudarVisu === 0 ? 1 : 0" :title="mudarVisu===0 ? 'Vista tabela' : 'Vista cards'">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
-              <rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>
-            </svg>
-          </button>
-        </div>
       </div>
 
-      <!-- VISTA TABELA -->
-      <div v-if="mudarVisu === 1" class="us-tbl-wrap">
-        <table class="us-table">
-          <thead class="us-thead">
-            <tr>
-              <th class="us-th">ID</th>
-              <th class="us-th">UC</th>
-              <th class="us-th">Nome</th>
-              <th class="us-th" style="text-align:center">kWp</th>
-              <th class="us-th" style="text-align:center">Status</th>
-              <th class="us-th" style="text-align:center">Ações</th>
-            </tr>
+      <p v-if="!filtradas.length" class="lx-empty">Nenhuma usina encontrada com esses filtros.</p>
+
+      <!-- Cartões -->
+      <div v-else-if="visao === 'cards'" class="us-grid">
+        <article v-for="u in filtradas" :key="u.id" class="us-card" :style="{ '--c': statusInfo(u.status).c }">
+          <div class="us-card-top">
+            <span class="lx-pill" :style="{ '--c': statusInfo(u.status).c }"><i></i>{{ statusInfo(u.status).txt }}</span>
+            <div class="us-acts">
+              <NuxtLink :to="`/usinas/${u.id}`" class="lx-icon-btn" style="--c:var(--teal)" title="Ver detalhes" :aria-label="`Ver ${u.nome}`">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </NuxtLink>
+              <button class="lx-icon-btn" style="--c:var(--purple)" title="Editar" :aria-label="`Editar ${u.nome}`" @click="openDialog(u.id)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+            </div>
+          </div>
+          <NuxtLink :to="`/usinas/${u.id}`" class="us-nome">{{ u.nome }}</NuxtLink>
+          <p class="us-end" :title="u.endereco">{{ u.endereco || 'Endereço não informado' }}</p>
+          <div class="us-meta">
+            <div><span>Potência</span><b>{{ numero(parseFloat(u.potencia) || 0, 2) }} <small>kWp</small></b></div>
+            <div><span>Tensão</span><b>{{ u.tensao || '—' }}</b></div>
+            <div><span>UC</span><b class="lx-mono">{{ u.uc }}</b></div>
+            <div><span>Início</span><b>{{ dataBR(u.dataInicio) }}</b></div>
+          </div>
+        </article>
+      </div>
+
+      <!-- Tabela -->
+      <div v-else class="lx-tbl-wrap">
+        <table class="lx-tbl">
+          <thead>
+            <tr><th>ID</th><th>UC</th><th>Nome</th><th class="r">Potência (kWp)</th><th class="c">Tensão</th><th>Início</th><th class="c">Status</th><th class="c">Ações</th></tr>
           </thead>
           <tbody>
-            <tr v-for="(usina, i) in usinas" :key="usina.id" class="us-tr" :class="{'us-tr-alt': i%2===1}">
-              <td class="us-td us-mono">{{ usina.id }}</td>
-              <td class="us-td us-mono">{{ usina.uc }}</td>
-              <td class="us-td" style="font-weight:700">{{ usina.nome.toUpperCase() }}</td>
-              <td class="us-td" style="text-align:center;font-weight:700">{{ usina.potencia }}</td>
-              <td class="us-td" style="text-align:center">
-                <span class="us-status-pill" :class="usina.status==='L' ? 'us-status-green' : usina.status==='M' ? 'us-status-amber' : 'us-status-red'">
-                  <span class="us-status-dot"></span>{{ getStatusLabel(usina.status) }}
-                </span>
-              </td>
-              <td class="us-td" style="text-align:center">
-                <div class="us-actions-row">
-                  <NuxtLink :to="`/usinas/${usina.id}`">
-                    <button class="us-icon-btn us-icon-indigo" title="Ver Usina">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                      </svg>
-                    </button>
+            <tr v-for="u in filtradas" :key="u.id">
+              <td class="lx-mono">{{ u.id }}</td>
+              <td class="lx-mono">{{ u.uc }}</td>
+              <td><NuxtLink :to="`/usinas/${u.id}`" class="us-link">{{ u.nome }}</NuxtLink></td>
+              <td class="r">{{ numero(parseFloat(u.potencia) || 0, 2) }}</td>
+              <td class="c">{{ u.tensao || '—' }}</td>
+              <td>{{ dataBR(u.dataInicio) }}</td>
+              <td class="c"><span class="lx-pill" :style="{ '--c': statusInfo(u.status).c }"><i></i>{{ statusInfo(u.status).txt }}</span></td>
+              <td class="c">
+                <div class="us-acts c">
+                  <NuxtLink :to="`/usinas/${u.id}`" class="lx-icon-btn" style="--c:var(--teal)" title="Ver detalhes" :aria-label="`Ver ${u.nome}`">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                   </NuxtLink>
-                  <button class="us-icon-btn us-icon-slate" title="Editar" @click="openDialog(usina.id)">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-                      <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-                      <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                    </svg>
+                  <button class="lx-icon-btn" style="--c:var(--purple)" title="Editar" :aria-label="`Editar ${u.nome}`" @click="openDialog(u.id)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                   </button>
                 </div>
               </td>
@@ -190,212 +215,62 @@ const MESES = [1,2,3,4,5,6,7,8,9,10,11,12];
           </tbody>
         </table>
       </div>
+    </section>
 
-      <!-- VISTA CARDS -->
-      <div v-if="mudarVisu === 0" class="us-cards-grid">
-        <div v-for="usina in usinas" :key="usina.id" class="us-card"
-          :class="usina.status==='L' ? 'us-card-green' : usina.status==='M' ? 'us-card-amber' : 'us-card-red'">
-          <div class="us-card-top">
-            <span class="us-status-pill" :class="usina.status==='L' ? 'us-status-green' : usina.status==='M' ? 'us-status-amber' : 'us-status-red'">
-              <span class="us-status-dot"></span>{{ getStatusLabel(usina.status) }}
-            </span>
-            <div class="us-card-actions-top">
-              <NuxtLink :to="`/usinas/${usina.id}`">
-                <button class="us-icon-btn us-icon-indigo" title="Ver">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                  </svg>
-                </button>
-              </NuxtLink>
-              <button class="us-icon-btn us-icon-slate" title="Editar" @click="openDialog(usina.id)">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-                  <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-                  <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                </svg>
-              </button>
-            </div>
+    <!-- Editar usina -->
+    <LxDialog v-model="dialog" titulo="Editar usina" :subtitulo="nomeUsina" icone="✎" cor="var(--purple)" :largura="620">
+      <div v-if="showErrorCampo" class="lx-alert err">Preencha todos os campos.</div>
+      <div v-if="showSuccessAlert" class="lx-alert ok">Usina editada com sucesso.</div>
+      <div v-if="showErrorAlert" class="lx-alert err">Erro ao editar a usina.</div>
+      <div class="lx-form">
+        <div class="lx-field"><label for="us-uc">UC</label><input id="us-uc" v-model="ucUsina" type="number" class="lx-input"></div>
+        <div class="lx-field"><label for="us-nome">Nome</label><input id="us-nome" v-model="nomeUsina" class="lx-input"></div>
+        <div class="lx-field"><label for="us-ini">Data de início</label><input id="us-ini" v-model="dataInicioUsina" type="date" class="lx-input"></div>
+        <div class="lx-field"><label for="us-pot">Potência (kWp)</label><input id="us-pot" v-model="potenciaUsina" type="number" step="0.01" class="lx-input"></div>
+        <div class="lx-field full"><label for="us-end">Endereço</label><input id="us-end" v-model="enderecoUsina" class="lx-input"></div>
+        <div class="lx-field">
+          <label>Tensão</label>
+          <div class="lx-seg" role="radiogroup" aria-label="Tensão">
+            <button v-for="t in ['BT', 'MT']" :key="t" role="radio" :aria-checked="tensaoUsina === t" :class="{ on: tensaoUsina === t }" @click="tensaoUsina = t">{{ t }}</button>
           </div>
-          <h4 class="us-card-nome">{{ usina.nome.toUpperCase() }}</h4>
-          <div class="us-card-divider"></div>
-          <div class="us-card-info">
-            <div class="us-card-info-row">
-              <span class="us-card-info-lbl">UC</span>
-              <span class="us-card-info-val us-mono">{{ usina.uc }}</span>
-            </div>
-            <div class="us-card-info-row">
-              <span class="us-card-info-lbl">Potência</span>
-              <span class="us-card-info-val">{{ usina.potencia }} kWp</span>
-            </div>
+        </div>
+        <div class="lx-field">
+          <label>Status</label>
+          <div class="lx-seg" role="radiogroup" aria-label="Status">
+            <button v-for="(s, k) in STATUS" :key="k" role="radio" :aria-checked="statusUsina === k" :class="{ on: statusUsina === k }" :style="{ '--c': s.c }" @click="statusUsina = k">{{ s.txt }}</button>
           </div>
         </div>
       </div>
-
-    </div>
+      <template #rodape>
+        <button class="lx-btn-ghost" @click="dialog = false">Cancelar</button>
+        <button class="lx-btn" style="--c1:var(--purple);--c2:var(--teal)" :disabled="salvando" @click="saveChanges">{{ salvando ? 'Salvando…' : 'Salvar alterações' }}</button>
+      </template>
+    </LxDialog>
   </div>
-
-  <!-- ══════ DIALOG EDITAR ══════ -->
-  <v-dialog v-model="dialog" max-width="600" persistent>
-    <div class="us-dialog">
-      <div class="us-dialog-hd" style="background:linear-gradient(135deg,#475569,#0f172a)">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round">
-          <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-          <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-        </svg>
-        <span>Editando Usina</span>
-        <button class="us-dialog-close" @click="closeDialog">✕</button>
-      </div>
-      <div class="us-dialog-body">
-        <div v-if="showErrorCampo"   class="us-alert us-alert-err">Preencha todos os campos!</div>
-        <div v-if="showSuccessAlert" class="us-alert us-alert-ok">Usina editada com sucesso!</div>
-        <div v-if="showErrorAlert"   class="us-alert us-alert-err">Erro ao editar usina!</div>
-        <div class="us-form-grid">
-          <div class="us-fg"><label class="us-flbl">UC</label><input v-model="ucUsina" type="number" class="us-input"/></div>
-          <div class="us-fg"><label class="us-flbl">Nome</label><input v-model="nomeUsina" class="us-input"/></div>
-          <div class="us-fg"><label class="us-flbl">Data início</label><input v-model="dataInicioUsina" type="date" class="us-input"/></div>
-          <div class="us-fg"><label class="us-flbl">Potência (kWp)</label><input v-model="potenciaUsina" type="number" class="us-input"/></div>
-          <div class="us-fg us-fg-full"><label class="us-flbl">Endereço</label><input v-model="enderecoUsina" class="us-input"/></div>
-          <div class="us-fg">
-            <label class="us-flbl">Tensão</label>
-            <div class="us-radio-group">
-              <label class="us-radio" :class="tensaoUsina==='BT'?'us-radio-on':''"><input type="radio" v-model="tensaoUsina" value="BT" style="display:none"> BT</label>
-              <label class="us-radio" :class="tensaoUsina==='MT'?'us-radio-on':''"><input type="radio" v-model="tensaoUsina" value="MT" style="display:none"> MT</label>
-            </div>
-          </div>
-          <div class="us-fg">
-            <label class="us-flbl">Status</label>
-            <div class="us-radio-group">
-              <label class="us-radio us-radio-green" :class="statusUsina==='L'?'us-radio-on-green':''"><input type="radio" v-model="statusUsina" value="L" style="display:none"> Ligado</label>
-              <label class="us-radio us-radio-red"   :class="statusUsina==='D'?'us-radio-on-red':''"><input type="radio" v-model="statusUsina" value="D" style="display:none"> Desligado</label>
-              <label class="us-radio us-radio-amber" :class="statusUsina==='M'?'us-radio-on-amber':''"><input type="radio" v-model="statusUsina" value="M" style="display:none"> Manutenção</label>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="us-dialog-footer">
-        <button class="us-btn-secondary" @click="closeDialog">Cancelar</button>
-        <button class="us-btn-primary" style="background:#475569!important" @click="saveChanges">Salvar edição</button>
-      </div>
-    </div>
-  </v-dialog>
-
-</div>
 </template>
 
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=DM+Mono:wght@400;500&display=swap');
-
-.us-root { min-height:100vh!important; background:#F0FDF9!important; font-family:'Plus Jakarta Sans',system-ui,sans-serif!important; color:#0f172a!important; padding-bottom:40px!important; }
-
-/* HEADER */
-.us-header { background:linear-gradient(135deg,#ECFDF5 0%,#EEF2FF 100%)!important; border-bottom:1px solid #E2E8F0!important; padding:24px 28px 20px!important; margin-bottom:28px!important; display:flex!important; align-items:center!important; justify-content:space-between!important; overflow:hidden!important; }
-.us-header-left { display:flex!important; align-items:center!important; gap:16px!important; }
-.us-header-icon { width:48px!important; height:48px!important; border-radius:13px!important; background:#059669!important; display:flex!important; align-items:center!important; justify-content:center!important; box-shadow:0 4px 14px rgba(5,150,105,.3)!important; flex-shrink:0!important; }
-.us-breadcrumb { display:flex!important; align-items:center!important; gap:5px!important; font-size:11px!important; color:#94A3B8!important; margin-bottom:3px!important; }
-.us-breadcrumb a { color:#059669!important; text-decoration:none!important; font-weight:600!important; }
-.us-title { font-size:26px!important; font-weight:900!important; letter-spacing:-.03em!important; color:#0f172a!important; margin:0 0 3px!important; }
-.us-sub { font-size:13px!important; color:#64748b!important; margin:0!important; }
-.us-header-img { height:110px!important; opacity:.85!important; }
-
-/* KPI */
-.us-kpi-row { display:grid!important; grid-template-columns:repeat(3,1fr)!important; gap:12px!important; padding:0 28px 28px!important; }
-.us-kpi { background:#fff!important; border:1px solid #f1f5f9!important; border-radius:14px!important; padding:16px 14px 14px!important; position:relative!important; overflow:hidden!important; display:flex!important; flex-direction:column!important; transition:transform .18s,box-shadow .18s!important; }
-.us-kpi:hover { transform:translateY(-3px)!important; box-shadow:0 8px 24px rgba(0,0,0,.08)!important; }
-.us-kpi::before { content:''!important; position:absolute!important; top:0!important; left:0!important; right:0!important; height:2px!important; }
-.us-kpi-green::before { background:#059669!important; } .us-kpi-rose::before { background:#E11D48!important; } .us-kpi-indigo::before { background:#4F46E5!important; }
-.us-kpi-badge { position:absolute!important; top:13px!important; right:13px!important; width:28px!important; height:28px!important; border-radius:8px!important; display:flex!important; align-items:center!important; justify-content:center!important; }
-.us-kpi-green .us-kpi-badge { background:#ECFDF5!important; color:#059669!important; } .us-kpi-rose .us-kpi-badge { background:#FFF1F2!important; color:#E11D48!important; } .us-kpi-indigo .us-kpi-badge { background:#EEF2FF!important; color:#4F46E5!important; }
-.us-kpi-badge svg { stroke:currentColor!important; }
-.us-kpi-label { font-size:10px!important; font-weight:700!important; letter-spacing:.12em!important; text-transform:uppercase!important; color:#94A3B8!important; display:block!important; margin-bottom:8px!important; margin-top:2px!important; }
-.us-kpi-val { font-size:32px!important; font-weight:900!important; letter-spacing:-.03em!important; line-height:1!important; display:block!important; margin-bottom:4px!important; }
-.us-kpi-green .us-kpi-val { color:#059669!important; } .us-kpi-rose .us-kpi-val { color:#E11D48!important; } .us-kpi-indigo .us-kpi-val { color:#4F46E5!important; }
-.us-kpi-note { font-size:11px!important; color:#94A3B8!important; font-weight:500!important; display:block!important; }
-.us-kpi-bottom { position:absolute!important; bottom:0!important; left:0!important; right:0!important; height:36px!important; opacity:.04!important; }
-.us-kpi-green .us-kpi-bottom { background:#059669!important; } .us-kpi-rose .us-kpi-bottom { background:#E11D48!important; } .us-kpi-indigo .us-kpi-bottom { background:#4F46E5!important; }
-
-/* BODY */
-.us-body { padding:0 28px!important; }
-.us-table-card { background:#fff!important; border:1px solid #E2E8F0!important; border-radius:16px!important; overflow:hidden!important; box-shadow:0 1px 6px rgba(0,0,0,.05)!important; }
-.us-card-hd { display:flex!important; align-items:center!important; justify-content:space-between!important; padding:18px 22px!important; border-bottom:1px solid #F1F5F9!important; background:#FAFBFF!important; flex-wrap:wrap!important; gap:12px!important; }
-.us-card-hd-left { display:flex!important; align-items:center!important; gap:12px!important; }
-.us-card-num { width:32px!important; height:32px!important; border-radius:9px!important; background:#059669!important; color:#fff!important; display:flex!important; align-items:center!important; justify-content:center!important; font-size:13px!important; font-weight:900!important; flex-shrink:0!important; }
-.us-card-title { font-size:16px!important; font-weight:800!important; color:#0f172a!important; margin:0 0 2px!important; display:block!important; }
-.us-card-sub   { font-size:12px!important; color:#64748b!important; margin:0!important; }
-.us-card-hd-right { display:flex!important; align-items:center!important; gap:8px!important; }
-
-/* Botões cabeçalho */
-.us-btn-add { display:flex!important; align-items:center!important; gap:7px!important; font-family:'Plus Jakarta Sans',system-ui,sans-serif!important; font-size:12px!important; font-weight:800!important; background:#059669!important; color:#fff!important; border:none!important; border-radius:10px!important; padding:9px 18px!important; cursor:pointer!important; box-shadow:0 2px 8px rgba(5,150,105,.3)!important; transition:all .15s!important; }
-.us-btn-add:hover { background:#047857!important; } .us-btn-add svg { stroke:#fff!important; }
-.us-btn-toggle { width:36px!important; height:36px!important; border-radius:9px!important; border:1.5px solid #E2E8F0!important; background:#F8FAFC!important; color:#475569!important; cursor:pointer!important; display:flex!important; align-items:center!important; justify-content:center!important; transition:all .14s!important; }
-.us-btn-toggle:hover { border-color:#059669!important; color:#059669!important; } .us-btn-toggle svg { stroke:currentColor!important; }
-
-/* Tabela */
-.us-tbl-wrap { overflow-x:auto!important; }
-.us-table { width:100%!important; border-collapse:collapse!important; font-size:13px!important; }
-.us-thead th { background:#059669!important; color:#fff!important; }
-.us-th { font-size:10px!important; font-weight:700!important; letter-spacing:.07em!important; text-transform:uppercase!important; padding:11px 14px!important; text-align:left!important; white-space:nowrap!important; border:none!important; }
-.us-tr:hover td { background:#F0FDF9!important; } .us-tr-alt td { background:#FAFBFF!important; }
-.us-td { padding:10px 14px!important; border-bottom:1px solid #F1F5F9!important; color:#0f172a!important; vertical-align:middle!important; }
-.us-mono { font-family:'DM Mono',monospace!important; font-size:11px!important; color:#64748b!important; }
-
-/* Pills */
-.us-status-pill { display:inline-flex!important; align-items:center!important; gap:5px!important; font-size:11px!important; font-weight:700!important; padding:3px 10px!important; border-radius:20px!important; }
-.us-status-green { background:#ECFDF5!important; color:#047857!important; border:1px solid #A7F3D0!important; }
-.us-status-amber { background:#FFFBEB!important; color:#92400E!important; border:1px solid #FDE68A!important; }
-.us-status-red   { background:#FFF1F2!important; color:#9F1239!important; border:1px solid #FECDD3!important; }
-.us-status-dot   { width:6px!important; height:6px!important; border-radius:50%!important; background:currentColor!important; opacity:.7!important; }
-
-/* Icon btns */
-.us-actions-row { display:flex!important; align-items:center!important; gap:4px!important; justify-content:center!important; }
-.us-icon-btn { width:30px!important; height:30px!important; border-radius:8px!important; border:none!important; display:flex!important; align-items:center!important; justify-content:center!important; cursor:pointer!important; transition:all .13s!important; flex-shrink:0!important; }
-.us-icon-btn svg { stroke:currentColor!important; }
-.us-icon-indigo { background:#EEF2FF!important; color:#4F46E5!important; } .us-icon-indigo:hover { background:#4F46E5!important; color:#fff!important; }
-.us-icon-slate  { background:#F1F5F9!important; color:#475569!important; } .us-icon-slate:hover  { background:#475569!important; color:#fff!important; }
-
-/* Cards grid */
-.us-cards-grid { display:grid!important; grid-template-columns:repeat(auto-fill,minmax(240px,1fr))!important; gap:14px!important; padding:20px!important; }
-.us-card { background:#fff!important; border-radius:14px!important; padding:16px!important; border:1px solid #E2E8F0!important; box-shadow:0 1px 4px rgba(0,0,0,.05)!important; transition:transform .18s,box-shadow .18s!important; }
-.us-card:hover { transform:translateY(-3px)!important; box-shadow:0 6px 20px rgba(0,0,0,.09)!important; }
-.us-card-green { border-top:3px solid #059669!important; } .us-card-amber { border-top:3px solid #D97706!important; } .us-card-red { border-top:3px solid #E11D48!important; }
-.us-card-top { display:flex!important; align-items:center!important; justify-content:space-between!important; margin-bottom:12px!important; }
-.us-card-actions-top { display:flex!important; gap:4px!important; }
-.us-card-nome { font-size:13px!important; font-weight:800!important; color:#0f172a!important; margin:0 0 10px!important; }
-.us-card-divider { height:1px!important; background:#F1F5F9!important; margin-bottom:10px!important; }
-.us-card-info { display:flex!important; flex-direction:column!important; gap:6px!important; }
-.us-card-info-row { display:flex!important; align-items:center!important; justify-content:space-between!important; }
-.us-card-info-lbl { font-size:10px!important; font-weight:700!important; letter-spacing:.08em!important; text-transform:uppercase!important; color:#94A3B8!important; }
-.us-card-info-val { font-size:13px!important; font-weight:800!important; color:#0f172a!important; }
-
-/* Dialog */
-.us-dialog { background:#fff!important; border-radius:16px!important; overflow:hidden!important; box-shadow:0 20px 60px rgba(0,0,0,.18)!important; font-family:'Plus Jakarta Sans',system-ui,sans-serif!important; }
-.us-dialog-hd { display:flex!important; align-items:center!important; gap:10px!important; padding:16px 20px!important; }
-.us-dialog-hd span { font-size:15px!important; font-weight:800!important; color:#fff!important; flex:1!important; }
-.us-dialog-close { width:28px!important; height:28px!important; border-radius:7px!important; border:none!important; background:rgba(255,255,255,.2)!important; color:#fff!important; cursor:pointer!important; font-size:13px!important; display:flex!important; align-items:center!important; justify-content:center!important; }
-.us-dialog-close:hover { background:rgba(255,255,255,.35)!important; }
-.us-dialog-body { padding:20px!important; max-height:70vh!important; overflow-y:auto!important; }
-.us-dialog-footer { display:flex!important; justify-content:flex-end!important; gap:10px!important; padding:14px 20px!important; border-top:1px solid #F1F5F9!important; background:#FAFBFF!important; }
-.us-form-grid { display:grid!important; grid-template-columns:1fr 1fr!important; gap:14px!important; }
-.us-fg { display:flex!important; flex-direction:column!important; gap:6px!important; }
-.us-fg-full { grid-column:1/-1!important; }
-.us-flbl { font-size:10px!important; font-weight:700!important; letter-spacing:.1em!important; text-transform:uppercase!important; color:#64748b!important; }
-.us-input { font-family:'Plus Jakarta Sans',system-ui,sans-serif!important; font-size:13px!important; font-weight:600!important; color:#0f172a!important; background:#F8FAFC!important; border:1.5px solid #E2E8F0!important; border-radius:10px!important; padding:9px 12px!important; outline:none!important; transition:border-color .14s,box-shadow .14s!important; width:100%!important; }
-.us-input:focus { border-color:#059669!important; background:#fff!important; box-shadow:0 0 0 3px rgba(5,150,105,.1)!important; }
-.us-radio-group { display:flex!important; gap:6px!important; flex-wrap:wrap!important; }
-.us-radio { padding:6px 14px!important; border-radius:20px!important; border:1.5px solid #E2E8F0!important; background:#F8FAFC!important; color:#64748b!important; font-size:12px!important; font-weight:700!important; cursor:pointer!important; transition:all .13s!important; font-family:'Plus Jakarta Sans',system-ui,sans-serif!important; }
-.us-radio-on       { background:#4F46E5!important; border-color:#4F46E5!important; color:#fff!important; }
-.us-radio-on-green { background:#059669!important; border-color:#059669!important; color:#fff!important; }
-.us-radio-on-red   { background:#E11D48!important; border-color:#E11D48!important; color:#fff!important; }
-.us-radio-on-amber { background:#D97706!important; border-color:#D97706!important; color:#fff!important; }
-.us-alert { display:flex!important; align-items:center!important; gap:8px!important; padding:10px 14px!important; border-radius:10px!important; font-size:13px!important; font-weight:600!important; margin-bottom:12px!important; }
-.us-alert-ok  { background:#ECFDF5!important; color:#047857!important; border:1px solid #A7F3D0!important; }
-.us-alert-err { background:#FFF1F2!important; color:#9F1239!important; border:1px solid #FECDD3!important; }
-.us-btn-secondary { font-family:'Plus Jakarta Sans',system-ui,sans-serif!important; font-size:12px!important; font-weight:700!important; background:#F8FAFC!important; color:#475569!important; border:1.5px solid #E2E8F0!important; border-radius:10px!important; padding:9px 18px!important; cursor:pointer!important; }
-.us-btn-primary { font-family:'Plus Jakarta Sans',system-ui,sans-serif!important; font-size:12px!important; font-weight:800!important; color:#fff!important; border:none!important; border-radius:10px!important; padding:9px 20px!important; cursor:pointer!important; }
-
-@media (max-width:640px) {
-  .us-header { padding:16px 20px!important; flex-direction:column!important; align-items:flex-start!important; }
-  .us-header-img { display:none!important; }
-  .us-kpi-row { grid-template-columns:1fr!important; padding:0 16px 16px!important; }
-  .us-body { padding:0 16px!important; }
-  .us-form-grid { grid-template-columns:1fr!important; }
+<style scoped>
+.us-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.us-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.us-card {
+  position: relative; overflow: hidden;
+  background: var(--card2); border: 1px solid var(--line); border-radius: 18px; padding: 15px 16px 14px;
+  transition: transform .2s, border-color .2s, box-shadow .2s;
 }
+.us-card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--c); box-shadow: 0 0 14px var(--c); }
+.us-card:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--c) 55%, transparent); box-shadow: 0 0 34px -14px var(--c); }
+.us-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.us-acts { display: flex; gap: 6px; }
+.us-acts.c { justify-content: center; }
+.us-nome { display: block; font-size: 14.5px; font-weight: 600; color: var(--tx); text-decoration: none; line-height: 1.3; }
+.us-nome:hover { color: var(--teal); }
+.us-end { font-size: 12px; color: var(--mut); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.us-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.us-meta div { background: rgba(255, 255, 255, .04); border-radius: 10px; padding: 7px 9px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.us-meta span { font-size: 10.5px; color: var(--mut); }
+.us-meta b { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.us-meta small { font-size: 10.5px; color: var(--mut); font-weight: 400; }
+.us-link { color: var(--tx); text-decoration: none; font-weight: 600; }
+.us-link:hover { color: var(--teal); }
+@media (max-width: 640px) { .us-tools, .us-tools .lx-search { width: 100%; } }
 </style>

@@ -1,0 +1,285 @@
+// scss/_lucentis-dark.scss
+//
+// Sistema visual "LUCENTIS dark" (padrão da tela Início), compartilhado por
+// todas as páginas migradas. Tudo com prefixo .lx- para não colidir com o
+// Vuetify nem com as páginas antigas que ainda não foram migradas.
+//
+// Uso numa página:  <div class="lx-page"> ... </div>
+// Diálogos (v-dialog é teleportado para o body): use <LxDialog>, que já
+// aplica .lx-dlg e os tokens.
+
+.lx-app,
+.lx-page,
+.lx-dlg,
+.lx-shell {
+  --bg: #060a1a;
+  --bg2: #0d1330;
+  --card: rgba(255, 255, 255, .055);
+  --card2: rgba(255, 255, 255, .035);
+  --line: rgba(255, 255, 255, .14);
+  --line2: rgba(255, 255, 255, .07);
+  --tx: #eef2ff;
+  --mut: #9aa7cc;
+  --teal: #22c5e0;
+  --green: #34d37a;
+  --orange: #ffa12e;
+  --purple: #a855f7;
+  --red: #ff6b4a;
+  --font: 'Sora', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  color-scheme: dark;
+}
+
+// ── Fundo da aplicação (layout default) ──
+.lx-app.v-application {
+  background: var(--bg) !important;
+  color: var(--tx);
+  font-family: var(--font);
+  background-image:
+    radial-gradient(circle at 20% 10%, rgba(34, 197, 224, .13), transparent 40%),
+    radial-gradient(circle at 85% 80%, rgba(168, 85, 247, .16), transparent 45%),
+    linear-gradient(rgba(255, 255, 255, .025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, .025) 1px, transparent 1px) !important;
+  background-size: auto, auto, 44px 44px, 44px 44px !important;
+  background-attachment: fixed !important;
+}
+.lx-app .v-main { margin: 0 !important; }
+.lx-app .page-wrapper { padding: 78px 24px 130px !important; min-height: 100vh; }
+.lx-app .maxWidth { max-width: 1380px; }
+@media (max-width: 640px) { .lx-app .page-wrapper { padding: 74px 14px 120px !important; } }
+
+// ── Página ──
+.lx-page {
+  color: var(--tx);
+  font-family: var(--font);
+  font-size: 14px;
+  * { box-sizing: border-box; }
+  h1, h2, h3, h4, p { margin: 0; }
+  a { color: inherit; }
+}
+
+// ── Cabeçalho de página ──
+.lx-head {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; flex-wrap: wrap;
+  margin-bottom: 22px;
+}
+.lx-crumb {
+  display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--mut); margin-bottom: 6px; flex-wrap: wrap;
+  a { color: var(--mut); text-decoration: none; transition: color .2s; }
+  a:hover { color: var(--tx); }
+  span.sep { opacity: .5; }
+  b { color: var(--tx); font-weight: 600; }
+}
+.lx-title { font-size: clamp(24px, 3vw, 32px); font-weight: 700; letter-spacing: -.02em; line-height: 1.1; }
+.lx-title .grad {
+  background: linear-gradient(120deg, var(--teal), var(--green) 45%, var(--purple));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.lx-sub { color: var(--mut); font-size: 13px; margin-top: 6px; }
+.lx-head-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+// ── KPIs ──
+.lx-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.lx-kpi {
+  --c: var(--teal);
+  position: relative; overflow: hidden;
+  background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 14px 16px;
+  backdrop-filter: blur(10px); display: flex; flex-direction: column; gap: 4px;
+  &::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--c); box-shadow: 0 0 14px var(--c); }
+  span { font-size: 11.5px; color: var(--mut); }
+  b { font-size: 24px; font-weight: 700; color: var(--c); line-height: 1.15; }
+  small { font-size: 11px; color: var(--mut); }
+  .ico { position: absolute; right: 12px; top: 12px; width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; font-size: 14px;
+    background: color-mix(in srgb, var(--c) 18%, transparent); color: var(--c); }
+}
+
+// ── Painéis ──
+.lx-panel {
+  --c: var(--teal);
+  background: var(--card); border: 1px solid var(--line); border-radius: 20px; backdrop-filter: blur(12px);
+  padding: 18px; min-width: 0; position: relative;
+}
+.lx-panel.accent::before { content: ""; position: absolute; left: 0; top: 18px; bottom: 18px; width: 3px; border-radius: 3px; background: var(--c); box-shadow: 0 0 16px var(--c); }
+.lx-panel-hd {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px;
+  h3 { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+  p { font-size: 12px; color: var(--mut); margin-top: 2px; }
+}
+.lx-ic {
+  --c: var(--teal);
+  width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; flex: none; color: #fff; font-size: 15px;
+  background: linear-gradient(135deg, var(--c), rgba(255, 255, 255, .12));
+}
+.lx-grid { display: grid; gap: 16px; }
+.lx-grid.g2 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); }
+.lx-mb { margin-bottom: 16px; }
+
+// ── Botões ──
+.lx-btn {
+  --c1: var(--teal); --c2: var(--green);
+  all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font: 600 13px var(--font); color: #fff; padding: 10px 18px; border-radius: 999px;
+  background: linear-gradient(120deg, var(--c1), var(--c2)); box-shadow: 0 8px 24px -10px var(--c1);
+  transition: transform .2s, box-shadow .2s, opacity .2s;
+  &:hover { transform: translateY(-1px); box-shadow: 0 12px 30px -8px var(--c2); }
+  &:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+  &.danger { --c1: #ff6b4a; --c2: #ff2d55; }
+  &.sm { padding: 7px 13px; font-size: 12px; }
+}
+.lx-btn-ghost {
+  --c: var(--tx);
+  all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font: 600 13px var(--font); color: var(--c); padding: 9px 16px; border-radius: 999px; border: 1px solid var(--line);
+  background: rgba(255, 255, 255, .04); transition: background .2s, border-color .2s;
+  &:hover { background: rgba(255, 255, 255, .1); border-color: color-mix(in srgb, var(--c) 50%, transparent); }
+  &.danger { --c: var(--red); }
+  &.sm { padding: 6px 12px; font-size: 12px; }
+}
+.lx-icon-btn {
+  --c: var(--teal);
+  all: unset; box-sizing: border-box; cursor: pointer; width: 32px; height: 32px; border-radius: 10px; display: inline-grid; place-items: center; flex: none;
+  color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); border: 1px solid color-mix(in srgb, var(--c) 30%, transparent);
+  transition: background .2s, color .2s, transform .2s;
+  &:hover { background: var(--c); color: #06101a; transform: translateY(-1px); }
+  svg { width: 15px; height: 15px; }
+}
+.lx-btn, .lx-btn-ghost, .lx-icon-btn, .lx-ano, .lx-seg button {
+  &:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+}
+
+// ── Seletor de ano / chips ──
+.lx-anos { display: flex; flex-wrap: wrap; gap: 6px; }
+.lx-ano {
+  all: unset; cursor: pointer; font: 600 11.5px var(--font); padding: 5px 11px; border-radius: 99px; border: 1px solid var(--line);
+  color: var(--mut); background: rgba(255, 255, 255, .04); transition: background .2s, color .2s;
+  &:hover { color: #fff; background: rgba(255, 255, 255, .1); }
+  &.on { color: #06101a; background: var(--c, var(--teal)); border-color: transparent; }
+}
+
+// ── Pílulas e tags ──
+.lx-pill {
+  --c: var(--mut);
+  display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; padding: 3px 10px; border-radius: 99px; white-space: nowrap;
+  color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); border: 1px solid color-mix(in srgb, var(--c) 32%, transparent);
+  i { width: 6px; height: 6px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); }
+}
+.lx-mono { font-family: var(--mono); font-size: 12px; color: var(--mut); }
+
+// ── Tabelas ──
+.lx-tbl-wrap { overflow-x: auto; }
+.lx-tbl {
+  width: 100%; border-collapse: collapse; font-size: 12.5px;
+  th { text-align: left; font-weight: 600; color: var(--mut); font-size: 11px; letter-spacing: .02em; padding: 9px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td { padding: 9px 12px; border-bottom: 1px dashed var(--line2); vertical-align: middle; }
+  tbody tr { transition: background .15s; }
+  tbody tr:hover { background: rgba(255, 255, 255, .04); }
+  .r { text-align: right; } .c { text-align: center; }
+  tfoot td { font-weight: 700; border-top: 1px solid var(--line); border-bottom: 0; }
+}
+.lx-empty { text-align: center; color: var(--mut); font-size: 13px; padding: 22px 12px; }
+
+// ── Alertas ──
+.lx-alert {
+  --c: var(--teal);
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 14px; font-size: 13px; margin-bottom: 12px;
+  color: var(--tx); background: color-mix(in srgb, var(--c) 12%, transparent); border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+  &::before { content: ""; width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--c); box-shadow: 0 0 10px var(--c); }
+  &.ok { --c: var(--green); } &.err { --c: var(--red); } &.warn { --c: var(--orange); }
+}
+
+// ── Formulários ──
+.lx-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.lx-form.c3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.lx-form .full { grid-column: 1 / -1; }
+@media (max-width: 640px) { .lx-form, .lx-form.c3 { grid-template-columns: 1fr; } }
+.lx-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.lx-field > label { font-size: 11.5px; color: var(--mut); font-weight: 600; }
+.lx-input {
+  font: 500 13.5px var(--font); color: var(--tx); width: 100%;
+  background: rgba(255, 255, 255, .05); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; outline: none;
+  transition: border-color .2s, box-shadow .2s, background .2s;
+  &:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(34, 197, 224, .18); background: rgba(255, 255, 255, .07); }
+  &:disabled { opacity: .55; cursor: not-allowed; }
+  &::-webkit-calendar-picker-indicator { filter: invert(.8); }
+}
+select.lx-input { appearance: none; cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, var(--mut) 50%), linear-gradient(135deg, var(--mut) 50%, transparent 50%);
+  background-position: calc(100% - 17px) 55%, calc(100% - 12px) 55%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 30px;
+  option { background: var(--bg2); color: var(--tx); }
+}
+.lx-search { position: relative; min-width: 220px;
+  .lx-input { padding-left: 34px; border-radius: 999px; }
+  svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; color: var(--mut); }
+}
+.lx-seg {
+  display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 14px; background: rgba(255, 255, 255, .04); border: 1px solid var(--line);
+  button {
+    --c: var(--teal);
+    all: unset; cursor: pointer; font: 600 12.5px var(--font); color: var(--mut); padding: 7px 13px; border-radius: 10px; transition: background .2s, color .2s;
+    &:hover { color: #fff; }
+    &.on { color: #06101a; background: var(--c); box-shadow: 0 0 16px -4px var(--c); }
+  }
+  &.disabled { opacity: .55; pointer-events: none; }
+}
+
+// ── Diálogos (conteúdo teleportado) ──
+.lx-dlg {
+  font-family: var(--font); color: var(--tx);
+  background: var(--bg2); border: 1px solid var(--line); border-radius: 22px; overflow: hidden;
+  box-shadow: 0 30px 80px -20px rgba(0, 0, 0, .8), 0 0 50px -24px var(--c, var(--teal));
+  display: flex; flex-direction: column; max-height: 90vh;
+  * { box-sizing: border-box; }
+}
+.lx-dlg-hd {
+  display: flex; align-items: center; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--line2);
+  background: linear-gradient(120deg, color-mix(in srgb, var(--c, var(--teal)) 18%, transparent), transparent 70%);
+  strong { flex: 1; font-size: 15px; font-weight: 600; }
+  small { display: block; font-size: 11.5px; color: var(--mut); font-weight: 400; margin-top: 2px; }
+}
+.lx-dlg-x { all: unset; cursor: pointer; width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; color: var(--mut); font-size: 20px;
+  &:hover { background: rgba(255, 255, 255, .08); color: #fff; }
+  &:focus-visible { outline: 2px solid #fff; }
+}
+.lx-dlg-body { padding: 18px; overflow-y: auto; }
+.lx-dlg-ft { display: flex; justify-content: flex-end; align-items: center; gap: 10px; flex-wrap: wrap; padding: 14px 18px; border-top: 1px solid var(--line2); background: rgba(255, 255, 255, .02); }
+.lx-dlg-ft .sp { flex: 1; }
+
+// ── Gráfico de barras com tooltip (mesmo padrão do modal da Início) ──
+.lx-bc { display: flex; align-items: stretch; gap: 6px; height: 210px; padding-top: 4px; }
+.lx-bcol { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; position: relative; border-radius: 8px; outline: none; padding: 0 1px;
+  &:hover, &:focus-visible { background: rgba(255, 255, 255, .05); }
+  &:hover .lx-btip, &:focus-visible .lx-btip { opacity: 1; transform: translate(-50%, 0); }
+  &:hover .lx-btip.l, &:focus-visible .lx-btip.l, &:hover .lx-btip.r, &:focus-visible .lx-btip.r { transform: translate(0, 0); }
+}
+.lx-bv { font-size: 10.5px; height: 16px; white-space: nowrap; font-weight: 600; color: var(--tx); }
+.lx-bbars { flex: 1; width: 100%; display: flex; align-items: flex-end; justify-content: center; gap: 2px; }
+.lx-b-proj { width: 42%; border: 1px dashed var(--orange); border-bottom: 0; border-radius: 4px 4px 0 0; background: rgba(255, 161, 46, .08); }
+.lx-b-real { width: 42%; border-radius: 4px 4px 0 0; background: var(--teal); }
+.lx-b-one { --c: var(--teal); width: 62%; max-width: 54px; border-radius: 5px 5px 0 0; background: linear-gradient(var(--c), color-mix(in srgb, var(--c) 35%, transparent)); }
+.lx-bl { font-size: 10.5px; color: var(--mut); margin-top: 5px; }
+.lx-btip {
+  position: absolute; bottom: calc(100% - 10px); left: 50%; transform: translate(-50%, 6px); min-width: 160px; z-index: 5;
+  background: #0b1030; border: 1px solid var(--line); border-radius: 12px; padding: 9px 11px; font-size: 11.5px; display: grid; gap: 4px;
+  opacity: 0; pointer-events: none; transition: .18s; box-shadow: 0 12px 30px -10px #000;
+  &.l { left: 0; transform: translate(0, 6px); }
+  &.r { left: auto; right: 0; transform: translate(0, 6px); }
+  strong { font-size: 12px; margin-bottom: 2px; }
+  div { display: flex; justify-content: space-between; gap: 12px; color: var(--mut); }
+  b { color: var(--tx); white-space: nowrap; }
+}
+.lx-leg { display: flex; gap: 14px; font-size: 11.5px; color: var(--mut); flex-wrap: wrap;
+  span { display: flex; align-items: center; gap: 6px; }
+  i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+}
+
+// ── Lista de definições (rótulo / valor) ──
+.lx-dl { display: grid; gap: 2px;
+  > div { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px dashed var(--line2); font-size: 13px; }
+  > div:last-child { border-bottom: 0; }
+  span { color: var(--mut); }
+  b { font-weight: 600; text-align: right; min-width: 0; overflow-wrap: anywhere; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lx-page *, .lx-dlg *, .lx-shell * { animation: none !important; transition: none !important; }
+}
