@@ -1,739 +1,396 @@
 <script setup>
+// Mapa público de eficiência energética (layout "blank", sem dock).
+// Painel de estatísticas: público para todos; aba Admin só para o usuário admin.
+//
+// Correções:
+//  • Admin usava sempre o "mês anterior" do relógio, que quase nunca tem dado.
+//    Agora cada indicador usa o último mês que tem registro:
+//      - geração ............. último mês com geração real (igual à Início)
+//      - faturas/consumo ..... último mês com fatura de compensação lançada
+//      - indicadores que cruzam os dois (autossuficiência, custo evitado)
+//        usam o mais antigo dos dois, para os dois lados existirem.
+//  • "Injetado" somava texto (ex.: "120.00" + "30.00" → "0120.0030.00").
+//  • Custo evitado usa a tarifa do mês cadastrada em Gerenciamento › Parâmetros.
 import { useHead } from '@vueuse/head';
 import { API_BASE_URL } from '~/base/link';
 import Map from '@/components/Map2.vue';
-import { ref, computed } from 'vue'
-
-// ─── Auth ────────────────────────────────────────────────────────────────────
-const { data } = useAuth();
-const isAdmin = computed(() => data.value?.username === 'admin');
-const unidades = ref(0)
-
-// ─── Dados globais ────────────────────────────────────────────────────────────
-const { data: geracoes  } = await useFetch(`${API_BASE_URL}/relatoriogeracao/`);
-const { data: injecoes  } = await useFetch(`${API_BASE_URL}/relatoriousina/`);
-const { data: compensa  } = await useFetch(`${API_BASE_URL}/relatoriocompensacao/`);
-const { data: usinas    } = await useFetch(`${API_BASE_URL}/usina/`);
-const { data: fetchedUnidades } = await useFetch(`${API_BASE_URL}/unidadecompensacao`);
-unidades.value = fetchedUnidades.value
-
-const contaEducacao = computed(() => usinas.value?.filter(i => i.secretaria === 'E') ?? []);
-const contaSaude    = computed(() => usinas.value?.filter(i => i.secretaria === 'S') ?? []);
-const contaOutros   = computed(() => usinas.value?.filter(i => i.secretaria === 'O') ?? []);
-
-const totalGerado = computed(() =>
-  geracoes.value?.reduce((acc, i) => acc + parseFloat(i.geracao), 0) ?? 0
-);
-const totalInjetado = computed(() =>
-  injecoes.value?.reduce((acc, i) => acc + i.injetadoPonta + i.injetadoFPonta, 0) ?? 0
-);
-const totalCompensa = computed(() =>
-  compensa.value?.reduce((acc, i) =>
-    acc + parseFloat(i.valorInjTUSD) + parseFloat(i.valorInjTE), 0) ?? 0
-);
-const totalSaldoJaneiro = computed(() => {
-  const hoje = new Date();
-  const mesAlvo = hoje.getMonth() + 1 - 3;
-  const anoAlvo = hoje.getFullYear() - (mesAlvo <= 0 ? 1 : 0);
-  const mesCorrigido = ((mesAlvo + 11) % 12) + 1;
-  return compensa.value?.reduce((acc, i) =>
-    (i.mes === mesCorrigido && i.ano === anoAlvo)
-      ? acc + parseFloat(i.saldoEnergia)
-      : acc, 0) ?? 0;
-});
-const totalCompensaSoma = computed(() =>
-  parseFloat(totalCompensa.value) + parseFloat(totalSaldoJaneiro.value) * 0.72
-);
-const totalPlacas = computed(() =>
-  usinas.value?.reduce((acc, i) => acc + parseFloat(i.qtdPlaca), 0) ?? 0
-);
-const totalInvestido = ref(
-  Number(8854468.32) + Number(8005328.88) + Number(7021350.76)
-);
-const totalCarbono = computed(() => totalGerado.value * 0.536);
-const totalCarbonoTon = computed(() => totalCarbono.value / 1000);
-const totalArvorePlantadas = computed(() => Math.round(totalCarbono.value / 150));
-
-const mesReferencia = computed(() => {
-  const meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-  const hoje = new Date();
-  const anterior = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
-  return `${meses[anterior.getMonth()]} ${anterior.getFullYear()}`;
-});
-
-const referencia = computed(() => {
-  const hoje = new Date();
-  const mes = hoje.getMonth();
-  const ano = hoje.getFullYear() - (mes === 0 ? 1 : 0);
-  const mesCorrigido = mes === 0 ? 12 : mes;
-  return { mes: mesCorrigido, ano };
-});
-
-const registrosMes = computed(() =>
-  compensa.value?.filter(i => i.mes === referencia.value.mes && i.ano === referencia.value.ano) ?? []
-);
-const geracoesMes = computed(() =>
-  geracoes.value?.filter(i => i.mes === referencia.value.mes && i.ano === referencia.value.ano) ?? []
-);
-const geracaoMes = computed(() =>
-  geracoesMes.value.reduce((acc, i) => acc + Number(i.geracao || 0), 0)
-);
-const energiaInjetadaMes = computed(() => {
-  const total = injecoes.value
-    ?.filter(i => i.mes === referencia.value.mes && i.ano === referencia.value.ano)
-    .reduce((acc, item) => acc + Number(item.injetadoPonta || 0) + Number(item.injetadoFPonta || 0), 0) ?? 0;
-  return Number(total.toFixed(2));
-});
-const consumoMedioUsinas = computed(() => {
-  let total = 0;
-  usinas.value.filter(usina => usina.id !== 19 && usina.id !== 20).forEach(usina => {
-    const unidade = unidades.value.find(u => u.uc === usina.uc);
-    if (unidade) total += Number(unidade.mediaConsumo || 0);
-  });
-  return Number(total.toFixed(2));
-});
-const energiaCompensadaPredios = computed(() => {
-  const filtrados = registrosMes.value.filter(item => {
-    const unidade = unidades.value.find(u => u.id === item.idUnidadeCompensa);
-    return unidade && ['E', 'S', 'O'].includes(unidade.secretaria);
-  });
-  return Number(filtrados.reduce((acc, item) => acc + Number(item.enerInjTUSD || 0), 0).toFixed(2));
-});
-const consumoPredios = computed(() => {
-  const UCsEspeciais = ['4000266381', '37068768'];
-  const filtrados = registrosMes.value.filter(item => {
-    const unidade = unidades.value.find(u => u.id === item.idUnidadeCompensa);
-    return unidade && ['E', 'S', 'O'].includes(unidade.secretaria);
-  });
-  const total = filtrados.reduce((acc, item) => {
-    const unidade = unidades.value.find(u => u.id === item.idUnidadeCompensa);
-    const uc = String(unidade?.uc || '');
-    const consumo = Number(item.consumokWh || 0);
-    if (UCsEspeciais.includes(uc)) {
-      const geracaoUC = geracoesMes.value.find(g => String(g.uc) === uc);
-      return acc + consumo + (geracaoUC ? Number(geracaoUC.geracao || 0) : 0);
-    }
-    return acc + consumo;
-  }, 0);
-  return Number(total.toFixed(2));
-});
-const taxaAutossuficiencia = computed(() => {
-  const totalCompensado = energiaCompensadaPredios.value + (geracaoMes.value - energiaInjetadaMes.value);
-  const totalConsumo = consumoPredios.value + consumoMedioUsinas.value;
-  if (!totalConsumo) return 0;
-  return Number(((totalCompensado / totalConsumo) * 100).toFixed(2));
-});
-
-const TARIFA_BT = 0.88;
-const MT_TARIFAS = { TUSD_ponta: 1.66642019, TE_ponta: 0.57222160, TUSD_forap: 0.14734841, TE_forap: 0.34908095 };
-const tarifaMediaMTParaUsina = () => ((MT_TARIFAS.TUSD_forap + MT_TARIFAS.TE_forap) + (MT_TARIFAS.TUSD_ponta + MT_TARIFAS.TE_ponta)) / 2;
-
-const somarEconomiaPorMesAno = (ano, mes) => {
-  const dados = compensa.value.filter(item => item.ano == ano && item.mes == mes);
-  return Number(dados.reduce((acc, item) => acc + Number(item.valorInjTUSD || 0) + Number(item.valorInjTE || 0), 0).toFixed(2));
-};
-const calcularCustoAutoconsumoMes = (ano, mes) => {
-  let total = 0;
-  usinas.value.filter(u => u.id != 19 && u.id != 20).forEach(u => {
-    const gMes = geracoes.value.find(g => g.idGeradora == u.id && g.ano == ano && g.mes == mes);
-    const inj = injecoes.value.filter(i => i.idGeradora == u.id && i.ano == ano && i.mes == mes)
-      .reduce((acc, item) => acc + Number(item.injetadoPonta || 0) + Number(item.injetadoFPonta || 0), 0);
-    let autoconsumo = Math.max(0, Number(gMes?.geracao || 0) - inj);
-    total += autoconsumo * ((u.tensao || '').toUpperCase() !== 'BT' ? tarifaMediaMTParaUsina() : TARIFA_BT);
-  });
-  usinas.value.filter(u => u.id == 19 || u.id == 20).forEach(u => {
-    const gMes = geracoes.value.find(g => g.idGeradora == u.id && g.ano == ano && g.mes == mes);
-    total += Number(gMes?.geracao || 0) * ((u.tensao || '').toUpperCase() !== 'BT' ? tarifaMediaMTParaUsina() : TARIFA_BT);
-  });
-  return Number(total.toFixed(2));
-};
-const calcularCustoEvitadoTotal = (ano, mes) =>
-  Number((somarEconomiaPorMesAno(ano, mes) + calcularCustoAutoconsumoMes(ano, mes)).toFixed(2));
-const custo_evitado_total = computed(() =>
-  calcularCustoEvitadoTotal(referencia.value.ano, referencia.value.mes)
-);
-const saldoMes = computed(() =>
-  registrosMes.value.reduce((acc, i) => acc + Number(i.saldoEnergia ?? 0), 0)
-);
-
-function consumoSecretaria(sigla) {
-  return registrosMes.value
-    .filter(item => {
-      const unidade = unidades.value.find(u => u.id == item.idUnidadeCompensa);
-      return unidade && unidade.secretaria === sigla;
-    })
-    .reduce((acc, item) => acc + Number(item.consumokWh || 0), 0);
-}
-const consumoEducacao = computed(() => consumoSecretaria('E'));
-const consumoSaude    = computed(() => consumoSecretaria('S'));
-const consumoOutros   = computed(() => consumoSecretaria('O'));
-const consumoTotal = computed(() => consumoEducacao.value + consumoSaude.value + consumoOutros.value);
-function pct(valor) {
-  if (!consumoTotal.value) return '0%';
-  return ((valor / consumoTotal.value) * 100).toFixed(1) + '%';
-}
-
-const showPanel  = ref(false);
-const adminTab   = ref('geral');
-const togglePanel = () => { showPanel.value = !showPanel.value; };
+import { ref, computed } from 'vue';
+import { useReferenciaAtual } from '~/composables/useReferenciaAtual';
+import { useTarifas, tarifaKwh } from '~/composables/useTarifas';
 
 useHead({ title: 'Mapa Eficiência • Lucentis' });
 definePageMeta({ layout: 'blank' });
 
+const { data } = useAuth();
+const isAdmin = computed(() => data.value?.username === 'admin');
+const { lista: tarifas } = useTarifas();
+
+const { data: geracoes } = await useFetch(`${API_BASE_URL}/relatoriogeracao/`);
+const { data: injecoes } = await useFetch(`${API_BASE_URL}/relatoriousina/`);
+const { data: compensa } = await useFetch(`${API_BASE_URL}/relatoriocompensacao/`);
+const { data: usinas } = await useFetch(`${API_BASE_URL}/usina/`);
+const { data: unidadesRaw } = await useFetch(`${API_BASE_URL}/unidadecompensacao`);
+
+const num = (v) => Number(v) || 0;
+const lUsinas = computed(() => usinas.value ?? []);
+const lGer = computed(() => geracoes.value ?? []);
+const lInj = computed(() => injecoes.value ?? []);
+const lComp = computed(() => compensa.value ?? []);
+const lUni = computed(() => unidadesRaw.value ?? []);
+const uniPorId = computed(() => new globalThis.Map(lUni.value.map(u => [u.id, u])));
+
+const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+const rotulo = (r) => `${MESES[r.mes - 1]} ${r.ano}`;
+const nf = (v, c = 0) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: c, maximumFractionDigits: c });
+
+// ── cabeçalho ──
+const SECS = [
+  { v: 'E', txt: 'Educação', c: 'var(--green)' },
+  { v: 'S', txt: 'Saúde', c: 'var(--teal)' },
+  { v: 'O', txt: 'Outros', c: 'var(--orange)' },
+];
+const usinasPorSec = computed(() => Object.fromEntries(SECS.map(s => [s.v, lUsinas.value.filter(u => u.secretaria === s.v).length])));
+
+// ── público (acumulado) ──
+const totalGerado = computed(() => lGer.value.reduce((a, i) => a + num(i.geracao), 0));
+const totalInjetado = computed(() => lInj.value.reduce((a, i) => a + num(i.injetadoPonta) + num(i.injetadoFPonta), 0));
+const totalCompensa = computed(() => lComp.value.reduce((a, i) => a + num(i.valorInjTUSD) + num(i.valorInjTE), 0));
+const totalSaldoJaneiro = computed(() => {
+  // regra original mantida: saldo de 3 meses atrás × 0,72
+  const hoje = new Date();
+  const mesAlvo = hoje.getMonth() + 1 - 3;
+  const anoAlvo = hoje.getFullYear() - (mesAlvo <= 0 ? 1 : 0);
+  const mesCorrigido = ((mesAlvo + 11) % 12) + 1;
+  return lComp.value.reduce((a, i) => (i.mes === mesCorrigido && i.ano === anoAlvo ? a + num(i.saldoEnergia) : a), 0);
+});
+const totalCompensaSoma = computed(() => totalCompensa.value + totalSaldoJaneiro.value * 0.72);
+const totalPlacas = computed(() => lUsinas.value.reduce((a, i) => a + num(i.qtdPlaca), 0));
+const totalInvestido = 8854468.32 + 8005328.88 + 7021350.76;
+const totalCarbono = computed(() => totalGerado.value * 0.536);
+const totalArvores = computed(() => Math.round(totalCarbono.value / 150));
+
+// ── meses de referência (último mês com registro) ──
+const { referencia: refGerAuto } = useReferenciaAtual(geracoes);
+const refCompAuto = computed(() => {
+  let b = null;
+  lComp.value.forEach((r) => {
+    if (!r.ano || !r.mes || !(num(r.consumokWh) || num(r.valorInjTUSD) || num(r.valorInjTE) || num(r.enerInjTUSD))) return;
+    if (!b || r.ano > b.ano || (r.ano === b.ano && r.mes > b.mes)) b = { ano: r.ano, mes: r.mes };
+  });
+  return b ?? refGerAuto.value;
+});
+const refMixAuto = computed(() => {
+  const a = refGerAuto.value, b = refCompAuto.value;
+  return a.ano * 12 + a.mes <= b.ano * 12 + b.mes ? a : b;
+});
+
+// mês escolhido no Admin (null = automático: último mês com registro de cada fonte)
+const mesEscolhido = ref(null);
+const chave = (r) => r.ano * 12 + r.mes - 1;
+const deChave = (k) => ({ ano: Math.floor(k / 12), mes: (k % 12) + 1 });
+const limites = computed(() => {
+  const max = Math.max(chave(refGerAuto.value), chave(refCompAuto.value));
+  let min = max;
+  for (const r of lGer.value) if (r.ano && r.mes) min = Math.min(min, chave(r));
+  for (const r of lComp.value) if (r.ano && r.mes) min = Math.min(min, chave(r));
+  return { min, max };
+});
+const mesAdmin = computed(() => mesEscolhido.value ?? refMixAuto.value);
+const mudarMes = (d) => {
+  const k = Math.min(limites.value.max, Math.max(limites.value.min, chave(mesAdmin.value) + d));
+  mesEscolhido.value = deChave(k);
+};
+const escolherMes = (v) => { if (!v) return; const [a, m] = v.split('-').map(Number); mesEscolhido.value = { ano: a, mes: m }; };
+const inputMes = computed(() => `${mesAdmin.value.ano}-${String(mesAdmin.value.mes).padStart(2, '0')}`);
+const fmtInput = (k) => { const r = deChave(k); return `${r.ano}-${String(r.mes).padStart(2, '0')}`; };
+
+// referências efetivas: o mês escolhido vale para tudo; no automático cada fonte usa o seu último mês
+const refGer = computed(() => mesEscolhido.value ?? refGerAuto.value);
+const refComp = computed(() => mesEscolhido.value ?? refCompAuto.value);
+const refMix = computed(() => mesEscolhido.value ?? refMixAuto.value);
+const doMes = (lista, r) => lista.filter(i => i.mes === r.mes && i.ano === r.ano);
+
+// ── admin: geral ──
+const geracaoMes = computed(() => doMes(lGer.value, refGer.value).reduce((a, i) => a + num(i.geracao), 0));
+const saldoMes = computed(() => doMes(lComp.value, refComp.value).reduce((a, i) => a + num(i.saldoEnergia), 0));
+
+const consumoMedioUsinas = computed(() => lUsinas.value.filter(u => u.id !== 19 && u.id !== 20)
+  .reduce((t, u) => t + num(lUni.value.find(x => x.uc === u.uc)?.mediaConsumo), 0));
+const taxaAutossuficiencia = computed(() => {
+  const r = refMix.value;
+  const comp = doMes(lComp.value, r).filter(i => ['E', 'S', 'O'].includes(uniPorId.value.get(i.idUnidadeCompensa)?.secretaria));
+  const gerMes = doMes(lGer.value, r);
+  const compensada = comp.reduce((a, i) => a + num(i.enerInjTUSD), 0);
+  const ESPECIAIS = ['4000266381', '37068768'];
+  const consumo = comp.reduce((a, i) => {
+    const uc = String(uniPorId.value.get(i.idUnidadeCompensa)?.uc ?? '');
+    const extra = ESPECIAIS.includes(uc) ? num(gerMes.find(g => String(g.uc) === uc)?.geracao) : 0;
+    return a + num(i.consumokWh) + extra;
+  }, 0);
+  const geracao = gerMes.reduce((a, i) => a + num(i.geracao), 0);
+  const injetada = doMes(lInj.value, r).reduce((a, i) => a + num(i.injetadoPonta) + num(i.injetadoFPonta), 0);
+  const total = consumo + consumoMedioUsinas.value;
+  return total ? ((compensada + (geracao - injetada)) / total) * 100 : 0;
+});
+const custoEvitado = computed(() => {
+  void tarifas.value;
+  const { ano, mes } = refMix.value;
+  const economia = doMes(lComp.value, refMix.value).reduce((a, i) => a + num(i.valorInjTUSD) + num(i.valorInjTE), 0);
+  let auto = 0;
+  lUsinas.value.forEach((u) => {
+    const g = num(lGer.value.find(x => x.idGeradora == u.id && x.ano == ano && x.mes == mes)?.geracao);
+    const inj = lInj.value.filter(x => x.idGeradora == u.id && x.ano == ano && x.mes == mes).reduce((a, x) => a + num(x.injetadoPonta) + num(x.injetadoFPonta), 0);
+    const kwh = (u.id == 19 || u.id == 20) ? g : Math.max(0, g - inj);
+    auto += kwh * tarifaKwh(u.tensao, ano, mes);
+  });
+  return economia + auto;
+});
+
+// ── admin: secretarias ──
+const SEC_ADM = [
+  { v: 'E', txt: 'Educação', c: 'var(--green)', ic: '✎' },
+  { v: 'S', txt: 'Saúde', c: 'var(--teal)', ic: '✚' },
+  { v: 'O', txt: 'Outros', c: 'var(--orange)', ic: '⌂' },
+];
+const consumoSec = computed(() => {
+  const r = Object.fromEntries(SEC_ADM.map(s => [s.v, 0]));
+  doMes(lComp.value, refComp.value).forEach((i) => { const s = uniPorId.value.get(i.idUnidadeCompensa)?.secretaria; if (s in r) r[s] += num(i.consumokWh); });
+  return r;
+});
+const consumoTotal = computed(() => Object.values(consumoSec.value).reduce((a, b) => a + b, 0));
+const pct = (v) => (consumoTotal.value ? (v / consumoTotal.value) * 100 : 0);
+
+// ── painel ──
+const showPanel = ref(false);
 const modoPainel = ref('publico');
+const adminTab = ref('geral');
 </script>
 
 <template>
-  <!-- ══════════════════════════════════════════
-       CABEÇALHO TECH
-  ══════════════════════════════════════════ -->
-  <div class="hd-container">
-    <div class="hd-inner">
-      <div class="hd-grid-bg"></div>
-      <div class="hd-top-row">
-        <div class="hd-solar-icon">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="4" fill="#00e5ff"/>
-            <g stroke="#00e5ff" stroke-width="1.5" stroke-linecap="round">
-              <line x1="12" y1="2"  x2="12" y2="5"/>
-              <line x1="12" y1="19" x2="12" y2="22"/>
-              <line x1="2"  y1="12" x2="5"  y2="12"/>
-              <line x1="19" y1="12" x2="22" y2="12"/>
-              <line x1="4.9"  y1="4.9"  x2="7"    y2="7"/>
-              <line x1="17"   y1="17"   x2="19.1" y2="19.1"/>
-              <line x1="4.9"  y1="19.1" x2="7"    y2="17"/>
-              <line x1="17"   y1="7"    x2="19.1" y2="4.9"/>
-            </g>
-          </svg>
-        </div>
-        <div class="hd-texts">
-          <span class="hd-eyebrow">EFICIÊNCIA ENERGÉTICA</span>
-          <h1 class="hd-title">PREFEITURA DE HORTOLÂNDIA</h1>
-        </div>
-        <div class="hd-pulse-dot"></div>
-      </div>
-      <div class="hd-bottom-row">
-        <span class="hd-sub">USINAS FOTOVOLTAICAS</span>
-        <div class="hd-chips">
-          <div class="hd-chip hd-chip-edu">
-            <BooksIcon size="13" />
-            <span>Educação</span>
-            <strong>{{ contaEducacao.length }}</strong>
-          </div>
-          <div class="hd-chip hd-chip-sau">
-            <FirstAidKitIcon size="13" />
-            <span>Saúde</span>
-            <strong>{{ contaSaude.length }}</strong>
-          </div>
-          <div class="hd-chip hd-chip-out">
-            <BuildingCommunityIcon size="13" />
-            <span>Outros</span>
-            <strong>{{ contaOutros.length }}</strong>
-          </div>
+  <div class="lx-page mp">
+    <!-- Cabeçalho flutuante -->
+    <header class="mp-hd">
+      <NuxtLink to="/" class="mp-marca" aria-label="Ir para o Início">
+        <LxNebulosa class="mp-neb" :particulas="18" :velocidade="0.7" />
+        <img src="https://i.imgur.com/qZ92wWu.png" alt="LUCENTIS">
+      </NuxtLink>
+      <div class="mp-hd-tx">
+        <span class="mp-eyebrow"><i class="mp-live"></i>Eficiência energética</span>
+        <h1>Prefeitura de <span class="grad">Hortolândia</span></h1>
+        <div class="mp-chips">
+          <span class="mp-chips-lb">Usinas</span>
+          <span v-for="s in SECS" :key="s.v" class="lx-pill" :style="{ '--c': s.c }"><i></i>{{ s.txt }} <b>{{ usinasPorSec[s.v] }}</b></span>
         </div>
       </div>
-    </div>
+    </header>
+
+    <!-- Mapa -->
+    <div class="mp-mapa"><Map /></div>
+
+    <!-- Aba do painel -->
+    <button class="mp-tab" :aria-expanded="showPanel" @click="showPanel = !showPanel">
+      <span class="mp-tab-handle"></span>
+      <span class="mp-tab-tx"><b>Estatísticas</b><small>{{ showPanel ? 'fechar painel' : 'ver dados' }}</small></span>
+      <span class="mp-tab-ic">{{ showPanel ? '▾' : '▴' }}</span>
+    </button>
+
+    <!-- Painel -->
+    <Transition name="mp-sheet">
+      <section v-if="showPanel" class="mp-sheet" aria-label="Painel de dados">
+        <div class="mp-sheet-hd">
+          <div class="mp-sheet-tt"><i></i><b>Painel de dados</b></div>
+          <div class="mp-sheet-r">
+            <div v-if="isAdmin" class="lx-seg">
+              <button :class="{ on: modoPainel === 'publico' }" @click="modoPainel = 'publico'">Público</button>
+              <button :class="{ on: modoPainel === 'admin' }" style="--c:var(--orange)" @click="modoPainel = 'admin'">Admin</button>
+            </div>
+            <button class="lx-dlg-x" aria-label="Fechar painel" @click="showPanel = false">×</button>
+          </div>
+        </div>
+
+        <!-- Público -->
+        <div v-if="modoPainel === 'publico' || !isAdmin" class="mp-body">
+          <article class="mp-hero">
+            <span class="mp-hero-ic">R$</span>
+            <div><small>Total investido pelo município</small><b>R$ {{ nf(totalInvestido, 2) }}</b></div>
+          </article>
+          <div class="mp-grid">
+            <div class="lx-kpi" style="--c:var(--teal)"><span class="ico">⚡</span><span>Usinas</span><b>{{ lUsinas.length }}</b><small>em operação no município</small></div>
+            <div class="lx-kpi" style="--c:var(--orange)"><span class="ico">☀</span><span>Placas</span><b>{{ nf(totalPlacas) }}</b><small>módulos fotovoltaicos</small></div>
+            <div class="lx-kpi" style="--c:var(--green)"><span class="ico">↑</span><span>Energia gerada</span><b>{{ nf(totalGerado / 1000) }}</b><small>MWh desde o início</small></div>
+            <div class="lx-kpi" style="--c:var(--purple)"><span class="ico">⇢</span><span>Energia injetada</span><b>{{ nf(totalInjetado / 1000) }}</b><small>MWh na rede</small></div>
+            <div class="lx-kpi mp-wide" style="--c:var(--green)"><span class="ico">$</span><span>Valor compensado</span><b>R$ {{ nf(totalCompensaSoma, 2) }}</b><small>créditos de energia nas faturas da prefeitura</small></div>
+          </div>
+          <p class="mp-sec-lb">Meio ambiente</p>
+          <div class="mp-grid">
+            <div class="lx-kpi" style="--c:var(--teal)"><span class="ico">♻</span><span>Carbono evitado</span><b>{{ nf(totalCarbono / 1000, 1) }}</b><small>toneladas de CO₂</small></div>
+            <div class="lx-kpi" style="--c:var(--green)"><span class="ico">🌳</span><span>Árvores equivalentes</span><b>{{ nf(totalArvores) }}</b><small>plantadas</small></div>
+          </div>
+        </div>
+
+        <!-- Admin -->
+        <div v-else class="mp-body">
+          <div class="mp-adm-bar">
+            <div class="lx-seg">
+              <button :class="{ on: adminTab === 'geral' }" @click="adminTab = 'geral'">Geral</button>
+              <button :class="{ on: adminTab === 'secretarias' }" @click="adminTab = 'secretarias'">Secretarias</button>
+            </div>
+            <div class="mp-mes" role="group" aria-label="Mês dos dados">
+              <button class="lx-icon-btn" aria-label="Mês anterior" :disabled="chave(mesAdmin) <= limites.min" @click="mudarMes(-1)">‹</button>
+              <input class="lx-input mp-mes-in" type="month" :value="inputMes" :min="fmtInput(limites.min)" :max="fmtInput(limites.max)"
+                aria-label="Escolher mês" @change="escolherMes($event.target.value)" />
+              <button class="lx-icon-btn" aria-label="Próximo mês" :disabled="chave(mesAdmin) >= limites.max" @click="mudarMes(1)">›</button>
+              <button class="mp-auto-btn" :class="{ on: !mesEscolhido }" :aria-pressed="!mesEscolhido" title="Usar o último mês com registro" @click="mesEscolhido = null">
+                {{ mesEscolhido ? 'Voltar ao último mês' : 'Último mês com dados' }}
+              </button>
+            </div>
+          </div>
+
+          <template v-if="adminTab === 'geral'">
+            <article class="mp-auto">
+              <div class="mp-auto-hd"><span>Taxa de autossuficiência</span><span class="lx-pill" style="--c:var(--teal)">{{ rotulo(refMix) }}</span></div>
+              <b>{{ nf(taxaAutossuficiencia, 1) }}<small>%</small></b>
+              <div class="mp-bar"><i :style="{ width: Math.min(taxaAutossuficiencia, 100) + '%' }"></i></div>
+              <p>Energia compensada + autoconsumo das usinas ÷ consumo dos prédios e das usinas</p>
+            </article>
+            <div class="mp-grid tres">
+              <div class="lx-kpi" style="--c:var(--orange)"><span>Custo evitado</span><b>R$ {{ nf(custoEvitado, 2) }}</b><small>Ref.: {{ rotulo(refMix) }}</small></div>
+              <div class="lx-kpi" style="--c:var(--teal)"><span>Geração no mês</span><b>{{ nf(geracaoMes) }} <em>kWh</em></b><small>Ref.: {{ rotulo(refGer) }}</small></div>
+              <div class="lx-kpi" style="--c:var(--green)"><span>Saldo de energia</span><b>{{ nf(saldoMes) }} <em>kWh</em></b><small>Ref.: {{ rotulo(refComp) }}</small></div>
+            </div>
+            <p class="mp-nota">
+              <template v-if="mesEscolhido">Todos os indicadores mostram {{ rotulo(mesEscolhido) }}.</template>
+              <template v-else>Cada indicador usa o último mês com registro lançado. Indicadores que cruzam geração e faturas usam o mês em que os dois existem.</template>
+            </p>
+          </template>
+
+          <template v-else>
+            <div class="mp-tot"><span>Consumo das unidades · {{ rotulo(refComp) }}</span><b>{{ nf(consumoTotal) }} kWh</b></div>
+            <div class="mp-secs">
+              <article v-for="s in SEC_ADM" :key="s.v" class="mp-sec" :style="{ '--c': s.c }">
+                <div class="mp-sec-hd"><span class="mp-sec-ic">{{ s.ic }}</span><b>{{ s.txt }}</b><span class="mp-sec-pct">{{ nf(pct(consumoSec[s.v]), 1) }}%</span></div>
+                <div class="mp-sec-v">{{ nf(consumoSec[s.v]) }} <small>kWh</small></div>
+                <div class="mp-bar"><i :style="{ width: pct(consumoSec[s.v]) + '%' }"></i></div>
+              </article>
+            </div>
+          </template>
+        </div>
+      </section>
+    </Transition>
   </div>
-
-  <!-- ══════════════════════════════════════════
-       MAPA
-  ══════════════════════════════════════════ -->
-  <v-col cols="12" lg="12" class="pa-0">
-    <Map />
-  </v-col>
-
-  <!-- ══════════════════════════════════════════
-       PULL TAB
-  ══════════════════════════════════════════ -->
-  <div class="pull-tab" @click="togglePanel">
-    <div class="pull-tab-scan"></div>
-    <div class="pull-tab-handle"></div>
-    <div class="pull-tab-content">
-      <span class="pull-tab-icon">{{ showPanel ? '▼' : '▲' }}</span>
-      <span class="pull-tab-label">ESTATÍSTICAS</span>
-      <span class="pull-tab-dash">——</span>
-      <span class="pull-tab-sub">{{ showPanel ? 'FECHAR PAINEL' : 'VER DADOS' }}</span>
-    </div>
-  </div>
-
-  <!-- ══════════════════════════════════════════
-       PAINEL DESLIZANTE
-  ══════════════════════════════════════════ -->
-  <v-expand-transition>
-    <div v-if="showPanel" class="info-panel">
-
-      <!-- topo sticky -->
-      <div class="panel-topbar">
-        <div class="panel-topbar-left">
-          <div class="panel-topbar-dot"></div>
-          <span class="panel-topbar-title">PAINEL DE DADOS</span>
-          <span class="panel-topbar-ref">· {{ mesReferencia }}</span>
-        </div>
-        <div class="panel-topbar-right">
-          <div v-if="isAdmin" class="mode-switcher">
-            <button class="mode-btn" :class="{ active: modoPainel === 'publico' }" @click="modoPainel = 'publico'">Público</button>
-            <button class="mode-btn mode-btn-admin" :class="{ active: modoPainel === 'admin' }" @click="modoPainel = 'admin'">🔒 Admin</button>
-          </div>
-          <button class="panel-close-btn" @click="togglePanel">✕</button>
-        </div>
-      </div>
-
-      <!-- ── MODO PÚBLICO ── -->
-      <div v-if="modoPainel === 'publico'" class="pub-section">
-
-        <div class="pub-section-label">
-          <span class="psl-line"></span><span>VISÃO GERAL</span><span class="psl-line"></span>
-        </div>
-
-        <div class="pub-hero-card">
-          <div class="pub-hero-glow"></div>
-          <div class="pub-hero-left">
-            <span class="pub-hero-icon">💰</span>
-            <div>
-              <span class="pub-card-label">TOTAL INVESTIDO</span>
-              <span class="pub-hero-val">R$ {{ totalInvestido.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span>
-            </div>
-          </div>
-          <div class="pub-hero-badge">MUNICÍPIO</div>
-        </div>
-
-        <div class="pub-grid">
-          <div class="pub-card">
-            <div class="pub-card-glow" style="background:#0047cc22"></div>
-            <span class="pub-card-icon-wrap" style="background:#0047cc18; color:#4fa3ff">⚡</span>
-            <span class="pub-card-label">USINAS</span>
-            <span class="pub-card-val">{{ usinas.length }}</span>
-          </div>
-          <div class="pub-card">
-            <div class="pub-card-glow" style="background:#ff416a22"></div>
-            <span class="pub-card-icon-wrap" style="background:#ff416a18; color:#ff7b9a">☀️</span>
-            <span class="pub-card-label">PLACAS</span>
-            <span class="pub-card-val">{{ totalPlacas.toLocaleString('pt-BR') }}</span>
-          </div>
-          <div class="pub-card">
-            <div class="pub-card-glow" style="background:#28a74522"></div>
-            <span class="pub-card-icon-wrap" style="background:#28a74518; color:#5cd68a">📈</span>
-            <span class="pub-card-label">GERADO</span>
-            <span class="pub-card-val">{{ totalGerado.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) }}</span>
-            <span class="pub-card-unit">kWh</span>
-          </div>
-          <div class="pub-card">
-            <div class="pub-card-glow" style="background:#ffc10722"></div>
-            <span class="pub-card-icon-wrap" style="background:#ffc10718; color:#ffd966">🔋</span>
-            <span class="pub-card-label">INJETADO</span>
-            <span class="pub-card-val">{{ totalInjetado.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) }}</span>
-            <span class="pub-card-unit">kWh</span>
-          </div>
-          <div class="pub-card pub-card-wide">
-            <div class="pub-card-glow" style="background:#9700ce22"></div>
-            <span class="pub-card-icon-wrap" style="background:#9700ce18; color:#c96af5">💵</span>
-            <span class="pub-card-label">COMPENSADO</span>
-            <span class="pub-card-val">R$ {{ totalCompensaSoma.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span>
-          </div>
-        </div>
-
-        <div class="pub-section-label" style="margin-top:14px">
-          <span class="psl-line"></span><span>MEIO AMBIENTE</span><span class="psl-line"></span>
-        </div>
-
-        <div class="pub-grid pub-grid-eco">
-          <div class="pub-card pub-card-eco">
-            <div class="pub-card-glow" style="background:#00e5ff18"></div>
-            <span class="pub-card-icon-wrap" style="background:#00e5ff12; color:#00e5ff">🌿</span>
-            <span class="pub-card-label">CARBONO EVITADO</span>
-            <span class="pub-card-val">{{ totalCarbono.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) }}</span>
-            <span class="pub-card-unit">kgCO₂</span>
-          </div>
-          <div class="pub-card pub-card-eco">
-            <div class="pub-card-glow" style="background:#13deb918"></div>
-            <span class="pub-card-icon-wrap" style="background:#13deb912; color:#13deb9">🌳</span>
-            <span class="pub-card-label">EQUIV. ÁRVORES</span>
-            <span class="pub-card-val">{{ totalArvorePlantadas.toLocaleString('pt-BR') }}</span>
-            <span class="pub-card-unit">plantadas</span>
-          </div>
-        </div>
-
-      </div>
-
-      <!-- ── MODO ADMIN ── -->
-      <div v-if="modoPainel === 'admin' && isAdmin" class="adm-section">
-
-        <div class="adm-badge-row">
-          <span class="adm-badge">🔒 PAINEL ADMINISTRATIVO</span>
-        </div>
-
-        <div class="adm-tabs">
-          <button class="adm-tab" :class="{ active: adminTab === 'geral' }" @click="adminTab = 'geral'">◈ Geral</button>
-          <button class="adm-tab" :class="{ active: adminTab === 'secretarias' }" @click="adminTab = 'secretarias'">🏛 Secretarias</button>
-        </div>
-
-        <!-- ABA GERAL -->
-        <div v-if="adminTab === 'geral'" class="adm-geral">
-          <div class="adm-hero-card">
-            <div class="adm-hero-bg"></div>
-            <span class="adm-card-label">TAXA DE AUTOSSUFICIÊNCIA</span>
-            <div class="adm-hero-val-row">
-              <span class="adm-hero-val">{{ taxaAutossuficiencia.toFixed(1) }}</span>
-              <span class="adm-hero-unit">%</span>
-            </div>
-            <div class="adm-bar-track">
-              <div class="adm-bar-fill" :style="{ width: Math.min(taxaAutossuficiencia, 100) + '%' }"></div>
-            </div>
-            <span class="adm-card-sub">Energia gerada vs. consumo total municipal · Ref.: {{ mesReferencia }}</span>
-          </div>
-          <div class="adm-grid">
-            <div class="adm-card adm-card-orange">
-              <span class="adm-card-label">CUSTO EVITADO</span>
-              <span class="adm-card-val">R$ {{ custo_evitado_total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</span>
-              <span class="adm-card-ref">Ref.: {{ mesReferencia }}</span>
-            </div>
-            <div class="adm-card adm-card-blue">
-              <span class="adm-card-label">GERAÇÃO NO MÊS</span>
-              <span class="adm-card-val">{{ geracaoMes.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) }} <small>kWh</small></span>
-              <span class="adm-card-ref">Ref.: {{ mesReferencia }}</span>
-            </div>
-            <div class="adm-card adm-card-teal">
-              <span class="adm-card-label">SALDO DE ENERGIA</span>
-              <span class="adm-card-val">{{ saldoMes.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) }} <small>kWh</small></span>
-              <span class="adm-card-ref">Ref.: {{ mesReferencia }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- ABA SECRETARIAS -->
-        <div v-if="adminTab === 'secretarias'" class="adm-sec-section">
-          <div class="adm-total-row">
-            <span class="adm-total-label">Consumo total das unidades</span>
-            <span class="adm-total-val">{{ consumoTotal.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) }} kWh</span>
-          </div>
-          <div class="adm-sec-grid">
-            <div class="adm-sec-card">
-              <div class="adm-sec-card-top">
-                <div class="adm-sec-icon" style="background:#1d4ed818; color:#4fa3ff">📚</div>
-                <span class="adm-sec-name">Educação</span>
-              </div>
-              <span class="adm-sec-val">{{ consumoEducacao.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) }} <small>kWh</small></span>
-              <div class="adm-sec-bar-track">
-                <div class="adm-sec-bar" style="background:#1d4ed8" :style="{ width: pct(consumoEducacao) }"></div>
-              </div>
-              <div class="adm-sec-footer">
-                <span class="adm-sec-pct" style="background:#1d4ed818; color:#4fa3ff">{{ pct(consumoEducacao) }}</span>
-                <span class="adm-sec-ref">Ref.: {{ mesReferencia }}</span>
-              </div>
-            </div>
-            <div class="adm-sec-card">
-              <div class="adm-sec-card-top">
-                <div class="adm-sec-icon" style="background:#05966918; color:#13deb9">🏥</div>
-                <span class="adm-sec-name">Saúde</span>
-              </div>
-              <span class="adm-sec-val">{{ consumoSaude.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) }} <small>kWh</small></span>
-              <div class="adm-sec-bar-track">
-                <div class="adm-sec-bar" style="background:#059669" :style="{ width: pct(consumoSaude) }"></div>
-              </div>
-              <div class="adm-sec-footer">
-                <span class="adm-sec-pct" style="background:#05966918; color:#13deb9">{{ pct(consumoSaude) }}</span>
-                <span class="adm-sec-ref">Ref.: {{ mesReferencia }}</span>
-              </div>
-            </div>
-            <div class="adm-sec-card">
-              <div class="adm-sec-card-top">
-                <div class="adm-sec-icon" style="background:#d9770618; color:#ffae1f">🏛</div>
-                <span class="adm-sec-name">Outros</span>
-              </div>
-              <span class="adm-sec-val">{{ consumoOutros.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) }} <small>kWh</small></span>
-              <div class="adm-sec-bar-track">
-                <div class="adm-sec-bar" style="background:#d97706" :style="{ width: pct(consumoOutros) }"></div>
-              </div>
-              <div class="adm-sec-footer">
-                <span class="adm-sec-pct" style="background:#d9770618; color:#ffae1f">{{ pct(consumoOutros) }}</span>
-                <span class="adm-sec-ref">Ref.: {{ mesReferencia }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-      </div>
-      <!-- fim admin -->
-
-    </div>
-  </v-expand-transition>
 </template>
 
 <style scoped>
-/* ════════════════════════════════════════════
-   CABEÇALHO
-════════════════════════════════════════════ */
-.hd-container {
-  position: absolute;
-  top: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 10;
-  width: min(560px, 94vw);
-}
-.hd-inner {
-  position: relative;
-  background: rgba(8,14,28,0.88);
-  backdrop-filter: blur(14px);
-  border: 1px solid rgba(0,229,255,0.18);
-  border-radius: 16px;
-  padding: 12px 16px 10px;
-  overflow: hidden;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.04);
-}
-.hd-grid-bg {
-  position: absolute;
-  inset: 0;
-  background-image: radial-gradient(circle, rgba(0,229,255,0.07) 1px, transparent 1px);
-  background-size: 20px 20px;
-  pointer-events: none;
-}
-.hd-top-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-.hd-solar-icon {
-  width: 38px; height: 38px;
-  background: rgba(0,229,255,0.1);
-  border: 1px solid rgba(0,229,255,0.25);
-  border-radius: 10px;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-  animation: hd-pulse 3s ease-in-out infinite;
-}
-@keyframes hd-pulse {
-  0%,100% { box-shadow: 0 0 0 0 rgba(0,229,255,0.0); }
-  50%     { box-shadow: 0 0 0 6px rgba(0,229,255,0.12); }
-}
-.hd-texts { display: flex; flex-direction: column; gap: 1px; flex: 1; }
-.hd-eyebrow {
-  font-size: 9px; font-weight: 700; letter-spacing: 0.14em;
-  color: rgba(0,229,255,0.6); text-transform: uppercase;
-}
-.hd-title {
-  font-size: 18px; font-weight: 800; color: #ffffff;
-  letter-spacing: 0.04em; line-height: 1;
-  text-shadow: 0 0 20px rgba(0,229,255,0.3);
-}
-.hd-pulse-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: #13deb9; flex-shrink: 0;
-  animation: hd-dot 2s ease-in-out infinite;
-}
-@keyframes hd-dot {
-  0%  { box-shadow: 0 0 0 0   rgba(19,222,185,0.6); }
-  70% { box-shadow: 0 0 0 8px rgba(19,222,185,0); }
-  100%{ box-shadow: 0 0 0 0   rgba(19,222,185,0); }
-}
-.hd-bottom-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.hd-sub {
-  font-size: 10px; font-weight: 700; letter-spacing: 0.12em;
-  color: rgba(255,255,255,0.35); text-transform: uppercase; white-space: nowrap;
-}
-.hd-chips { display: flex; gap: 6px; flex-wrap: wrap; }
-.hd-chip {
-  display: flex; align-items: center; gap: 5px;
-  font-size: 11px; font-weight: 600;
-  padding: 4px 10px; border-radius: 20px; border: 1px solid; white-space: nowrap;
-}
-.hd-chip-edu { background: rgba(29,78,216,0.18); border-color: rgba(29,78,216,0.4); color: #7ab4ff; }
-.hd-chip-sau { background: rgba(5,150,105,0.18);  border-color: rgba(5,150,105,0.4);  color: #13deb9; }
-.hd-chip-out { background: rgba(217,119,6,0.18);  border-color: rgba(217,119,6,0.4);  color: #ffae1f; }
-.hd-chip strong { background: rgba(255,255,255,0.12); padding: 1px 6px; border-radius: 8px; font-size: 11px; }
+.mp { position: relative; width: 100%; height: 100dvh; overflow: hidden; background: var(--bg); }
+.mp-mapa { position: absolute; inset: 0; }
 
-/* ════════════════════════════════════════════
-   PULL TAB
-════════════════════════════════════════════ */
-.pull-tab {
-  position: absolute;
-  bottom: 0; left: 50%;
-  transform: translateX(-50%);
-  width: min(380px, 82vw);
-  background: linear-gradient(135deg, #050d1f 0%, #0a1628 50%, #050d1f 100%);
-  border: 1px solid rgba(0,229,255,0.2);
-  border-bottom: none;
-  border-top-left-radius: 20px; border-top-right-radius: 20px;
-  padding: 10px 20px 8px;
-  cursor: pointer; z-index: 15; overflow: hidden;
-  box-shadow: 0 -6px 24px rgba(0,0,0,0.5), inset 0 1px 0 rgba(0,229,255,0.1);
-  transition: all 0.2s;
+/* ── Cabeçalho ── */
+.mp-hd {
+  position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 10; width: min(620px, calc(100vw - 24px));
+  display: flex; align-items: center; gap: 16px; padding: 12px 18px; border-radius: 22px;
+  background: rgba(13, 19, 48, .82); backdrop-filter: blur(16px); border: 1px solid var(--line);
+  box-shadow: 0 18px 50px -18px rgba(0, 0, 0, .75), 0 0 40px -22px var(--teal);
 }
-.pull-tab:hover {
-  border-color: rgba(0,229,255,0.4);
-  box-shadow: 0 -8px 28px rgba(0,0,0,0.5), 0 0 20px rgba(0,229,255,0.08);
+.mp-hd::before { content: ""; position: absolute; left: 18px; right: 18px; top: 0; height: 2px; border-radius: 2px; background: linear-gradient(90deg, var(--teal), var(--purple)); box-shadow: 0 0 12px var(--teal); }
+.mp-marca { position: relative; display: block; line-height: 0; isolation: isolate; flex: none; }
+.mp-neb { position: absolute; left: 50%; top: 50%; width: 220%; height: 260%; transform: translate(-50%, -50%); z-index: -1; opacity: .8; }
+.mp-marca img { position: relative; height: 44px; filter: drop-shadow(0 1px 4px rgba(3, 6, 15, .8)); }
+.mp-marca:focus-visible { outline: 2px solid #fff; outline-offset: 3px; border-radius: 8px; }
+.mp-hd-tx { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.mp-eyebrow { display: inline-flex; align-items: center; gap: 7px; font-size: 10.5px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--mut); }
+.mp-live { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: mpLive 2s ease-in-out infinite; }
+@keyframes mpLive { 0% { box-shadow: 0 0 0 0 rgba(52, 211, 122, .7); } 70% { box-shadow: 0 0 0 7px rgba(52, 211, 122, 0); } 100% { box-shadow: 0 0 0 0 rgba(52, 211, 122, 0); } }
+.mp-hd h1 { font-size: 19px; font-weight: 700; letter-spacing: -.01em; line-height: 1.15; }
+.mp-hd .grad { background: linear-gradient(90deg, var(--teal), var(--purple)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.mp-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.mp-chips-lb { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--mut); margin-right: 2px; }
+.mp-chips b { color: var(--tx); margin-left: 2px; }
+
+/* ── Aba ── */
+.mp-tab {
+  all: unset; box-sizing: border-box; cursor: pointer; position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); z-index: 15;
+  width: min(360px, 84vw); display: flex; align-items: center; justify-content: center; gap: 12px; padding: 14px 20px 12px;
+  border-radius: 20px 20px 0 0; background: rgba(13, 19, 48, .9); backdrop-filter: blur(14px); border: 1px solid var(--line); border-bottom: 0;
+  box-shadow: 0 -10px 34px -12px rgba(0, 0, 0, .7), 0 0 30px -16px var(--teal); transition: border-color .2s;
 }
-.pull-tab-scan {
-  position: absolute; top: 0; left: -100%; width: 60%; height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(0,229,255,0.06), transparent);
-  animation: scan 3s linear infinite; pointer-events: none;
+.mp-tab:hover { border-color: rgba(34, 197, 224, .5); }
+.mp-tab:focus-visible { outline: 2px solid #fff; }
+.mp-tab-handle { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); width: 34px; height: 3px; border-radius: 3px; background: var(--line); }
+.mp-tab-tx { display: flex; align-items: baseline; gap: 10px; }
+.mp-tab-tx b { font-size: 14px; font-weight: 600; letter-spacing: .02em; }
+.mp-tab-tx small { font-size: 11.5px; color: var(--mut); }
+.mp-tab-ic { color: var(--teal); font-size: 13px; }
+
+/* ── Painel ── */
+.mp-sheet {
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 30; max-height: 80vh; overflow-y: auto;
+  background: var(--bg2); border-top: 1px solid var(--line); border-radius: 26px 26px 0 0;
+  box-shadow: 0 -20px 60px -10px rgba(0, 0, 0, .7);
+  background-image: radial-gradient(circle at 10% 0%, rgba(34, 197, 224, .12), transparent 40%), radial-gradient(circle at 90% 100%, rgba(168, 85, 247, .12), transparent 45%);
 }
-@keyframes scan { 0%{ left: -60%; } 100%{ left: 120%; } }
-.pull-tab-handle {
-  position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
-  width: 28px; height: 3px; background: rgba(0,229,255,0.3); border-radius: 2px;
+.mp-sheet-hd {
+  position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px;
+  background: rgba(13, 19, 48, .92); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line2); border-radius: 26px 26px 0 0;
 }
-.pull-tab-content {
-  display: flex; align-items: center; justify-content: center;
-  gap: 8px; margin-top: 4px;
+.mp-sheet-tt { display: flex; align-items: center; gap: 9px; font-size: 14px; }
+.mp-sheet-tt i { width: 8px; height: 8px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 8px var(--teal); }
+.mp-sheet-r { display: flex; align-items: center; gap: 10px; }
+.mp-body { max-width: 1100px; margin: 0 auto; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+
+.mp-hero {
+  display: flex; align-items: center; gap: 14px; padding: 18px 20px; border-radius: 20px; position: relative; overflow: hidden;
+  background: radial-gradient(circle at 100% 0%, rgba(34, 197, 224, .22), transparent 60%), var(--card); border: 1px solid rgba(34, 197, 224, .35);
 }
-.pull-tab-icon  { font-size: 10px; color: #00e5ff; }
-.pull-tab-label { font-size: 13px; font-weight: 800; color: #ffffff; letter-spacing: 0.12em; }
-.pull-tab-dash  { font-size: 11px; color: rgba(0,229,255,0.3); letter-spacing: -0.05em; }
-.pull-tab-sub   { font-size: 10px; font-weight: 600; color: rgba(0,229,255,0.6); letter-spacing: 0.08em; }
+.mp-hero-ic { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; font-weight: 700; color: #fff; background: linear-gradient(135deg, var(--teal), var(--purple)); flex: none; }
+.mp-hero small { display: block; font-size: 12px; color: var(--mut); }
+.mp-hero b { font: 600 clamp(20px, 3vw, 28px) var(--mono); letter-spacing: -.02em; }
+.mp-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.mp-grid.tres { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.mp-grid .lx-kpi b { font-variant-numeric: tabular-nums; }
+.mp-grid .lx-kpi b em { font-style: normal; font-size: 12px; color: var(--mut); font-weight: 500; }
+.mp-wide { grid-column: 1 / -1; }
+.mp-sec-lb { font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--mut); margin-top: 4px; }
 
-/* ════════════════════════════════════════════
-   PAINEL
-════════════════════════════════════════════ */
-.info-panel {
-  position: absolute; bottom: 0; left: 0; width: 100%;
-  background: #080e1c; z-index: 9999;
-  overflow-y: auto; max-height: 78vh;
-  border-top-left-radius: 24px; border-top-right-radius: 24px;
-  border-top: 1px solid rgba(0,229,255,0.15);
-  box-shadow: 0 -12px 48px rgba(0,0,0,0.6);
+.mp-adm-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px 14px; flex-wrap: wrap; }
+.mp-mes { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.mp-mes .lx-icon-btn:disabled { opacity: .35; pointer-events: none; }
+.mp-mes-in { width: 170px; padding: 7px 10px; }
+.mp-auto-btn {
+  all: unset; box-sizing: border-box; cursor: pointer; font: 600 11.5px var(--font); padding: 7px 12px; border-radius: 99px;
+  color: var(--mut); border: 1px solid var(--line); background: rgba(255, 255, 255, .04); transition: color .2s, background .2s, border-color .2s;
 }
-.panel-topbar {
-  position: sticky; top: 0;
-  background: rgba(8,14,28,0.97); backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(255,255,255,0.06);
-  padding: 13px 16px 11px;
-  display: flex; align-items: center; justify-content: space-between;
-  z-index: 2;
-  border-top-left-radius: 24px; border-top-right-radius: 24px;
+.mp-auto-btn:hover { color: var(--tx); }
+.mp-auto-btn.on { color: var(--teal); border-color: rgba(34, 197, 224, .45); background: rgba(34, 197, 224, .1); }
+.mp-auto-btn:focus-visible { outline: 2px solid #fff; }
+.mp-auto { padding: 18px 20px; border-radius: 20px; background: var(--card); border: 1px solid rgba(34, 197, 224, .35); }
+.mp-auto-hd { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12.5px; color: var(--mut); }
+.mp-auto > b { display: block; font: 700 46px var(--mono); letter-spacing: -.03em; line-height: 1.1; margin: 6px 0 10px; }
+.mp-auto > b small { font-size: 22px; color: var(--teal); margin-left: 3px; }
+.mp-auto p { font-size: 11.5px; color: var(--mut); margin-top: 8px; }
+.mp-bar { height: 6px; border-radius: 99px; background: rgba(255, 255, 255, .07); overflow: hidden; }
+.mp-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--c, var(--teal)), var(--purple)); box-shadow: 0 0 10px var(--c, var(--teal)); transition: width .8s cubic-bezier(.34, 1.3, .64, 1); }
+.mp-nota { font-size: 11.5px; color: var(--mut); }
+
+.mp-tot { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 12.5px; color: var(--mut); }
+.mp-tot b { font: 600 16px var(--mono); color: var(--tx); }
+.mp-secs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.mp-sec { padding: 16px; border-radius: 18px; background: var(--card); border: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px; }
+.mp-sec-hd { display: flex; align-items: center; gap: 10px; }
+.mp-sec-ic { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); }
+.mp-sec-hd b { font-size: 14px; font-weight: 600; }
+.mp-sec-pct { margin-left: auto; font: 600 12px var(--mono); color: var(--c); padding: 3px 9px; border-radius: 99px; background: color-mix(in srgb, var(--c) 14%, transparent); }
+.mp-sec-v { font: 600 22px var(--mono); }
+.mp-sec-v small { font: 500 12px var(--font); color: var(--mut); }
+
+.mp-sheet-enter-active, .mp-sheet-leave-active { transition: transform .35s cubic-bezier(.2, .8, .2, 1), opacity .25s; }
+.mp-sheet-enter-from, .mp-sheet-leave-to { transform: translateY(100%); opacity: .4; }
+
+@media (max-width: 900px) { .mp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .mp-secs, .mp-grid.tres { grid-template-columns: 1fr; } }
+@media (max-width: 520px) {
+  .mp-hd { gap: 10px; padding: 10px 12px; top: 10px; }
+  .mp-marca img { height: 34px; }
+  .mp-hd h1 { font-size: 15px; }
+  .mp-chips-lb { display: none; }
+  .mp-auto > b { font-size: 36px; }
 }
-.panel-topbar-left { display: flex; align-items: center; gap: 8px; }
-.panel-topbar-dot  { width: 7px; height: 7px; border-radius: 50%; background: #00e5ff; box-shadow: 0 0 6px #00e5ff; }
-.panel-topbar-title { font-size: 12px; font-weight: 800; color: #ffffff; letter-spacing: 0.1em; }
-.panel-topbar-ref   { font-size: 11px; color: rgba(255,255,255,0.3); font-weight: 500; }
-.panel-topbar-right { display: flex; align-items: center; gap: 8px; }
-.panel-close-btn {
-  width: 28px; height: 28px; border-radius: 8px;
-  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
-  color: rgba(255,255,255,0.45); font-size: 12px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center; transition: all 0.15s;
-}
-.panel-close-btn:hover { background: rgba(255,255,255,0.12); color: #fff; }
-
-.mode-switcher {
-  display: flex; background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 3px; gap: 3px;
-}
-.mode-btn {
-  font-size: 11px; font-weight: 700; padding: 5px 11px; border-radius: 7px;
-  border: none; background: transparent; color: rgba(255,255,255,0.35);
-  cursor: pointer; transition: all 0.15s; letter-spacing: 0.03em;
-}
-.mode-btn.active          { background: rgba(0,229,255,0.12); color: #00e5ff; box-shadow: 0 0 10px rgba(0,229,255,0.15); }
-.mode-btn-admin.active    { background: rgba(255,174,31,0.12); color: #ffae1f; }
-
-/* ════════════════════════════════════════════
-   PÚBLICO
-════════════════════════════════════════════ */
-.pub-section { padding: 16px 14px 20px; display: flex; flex-direction: column; gap: 10px; }
-.pub-section-label {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 10px; font-weight: 700; letter-spacing: 0.12em; color: rgba(255,255,255,0.22);
-}
-.psl-line { flex: 1; height: 1px; background: rgba(255,255,255,0.07); }
-
-.pub-hero-card {
-  position: relative;
-  background: linear-gradient(135deg, #0a1628, #0d1e38);
-  border: 1px solid rgba(0,229,255,0.15); border-radius: 16px;
-  padding: 16px; display: flex; align-items: center; justify-content: space-between; overflow: hidden;
-}
-.pub-hero-glow {
-  position: absolute; top: -40px; right: -40px; width: 140px; height: 140px;
-  border-radius: 50%; background: rgba(0,71,204,0.25); filter: blur(40px); pointer-events: none;
-}
-.pub-hero-left  { display: flex; align-items: center; gap: 12px; }
-.pub-hero-icon  { font-size: 26px; }
-.pub-card-label { display: block; font-size: 9px; font-weight: 700; letter-spacing: 0.1em; color: rgba(255,255,255,0.35); text-transform: uppercase; margin-bottom: 2px; }
-.pub-hero-val   { display: block; font-size: 20px; font-weight: 800; color: #ffffff; letter-spacing: -0.01em; }
-.pub-hero-badge { font-size: 9px; font-weight: 700; letter-spacing: 0.1em; color: rgba(0,229,255,0.6); background: rgba(0,229,255,0.08); border: 1px solid rgba(0,229,255,0.15); padding: 4px 10px; border-radius: 20px; }
-
-.pub-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.pub-grid-eco { grid-template-columns: 1fr 1fr; }
-
-.pub-card {
-  position: relative; background: rgba(13,22,42,0.9);
-  border: 1px solid rgba(255,255,255,0.06); border-radius: 14px;
-  padding: 13px 12px 11px; display: flex; flex-direction: column; gap: 3px; overflow: hidden; transition: border-color 0.2s;
-}
-.pub-card:hover { border-color: rgba(255,255,255,0.12); }
-.pub-card-wide  { grid-column: 1 / -1; }
-.pub-card-eco   { background: rgba(8,20,16,0.9); border-color: rgba(0,229,255,0.08); }
-.pub-card-glow  { position: absolute; top: -24px; right: -24px; width: 80px; height: 80px; border-radius: 50%; filter: blur(20px); pointer-events: none; }
-.pub-card-icon-wrap { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 17px; margin-bottom: 4px; }
-.pub-card-val   { font-size: 22px; font-weight: 800; color: #ffffff; letter-spacing: -0.02em; line-height: 1.1; }
-.pub-card-unit  { font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.3); }
-
-/* ════════════════════════════════════════════
-   ADMIN
-════════════════════════════════════════════ */
-.adm-section { padding: 14px 14px 20px; display: flex; flex-direction: column; gap: 12px; }
-.adm-badge-row { display: flex; justify-content: center; }
-.adm-badge { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; background: rgba(255,174,31,0.1); border: 1px solid rgba(255,174,31,0.25); color: #ffae1f; padding: 5px 14px; border-radius: 20px; }
-
-.adm-tabs { display: flex; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; padding: 4px; gap: 4px; }
-.adm-tab { flex: 1; padding: 8px 0; border-radius: 9px; border: none; background: transparent; color: rgba(255,255,255,0.35); font-size: 12px; font-weight: 700; cursor: pointer; letter-spacing: 0.04em; transition: all 0.2s; }
-.adm-tab.active { background: rgba(0,229,255,0.1); color: #00e5ff; box-shadow: 0 0 12px rgba(0,229,255,0.12); border: 1px solid rgba(0,229,255,0.2); }
-
-.adm-geral { display: flex; flex-direction: column; gap: 10px; }
-
-.adm-hero-card { position: relative; background: linear-gradient(145deg, #050e22, #091526); border: 1px solid rgba(0,229,255,0.2); border-radius: 16px; padding: 16px; overflow: hidden; }
-.adm-hero-bg   { position: absolute; inset: 0; background-image: radial-gradient(circle, rgba(0,229,255,0.05) 1px, transparent 1px); background-size: 18px 18px; pointer-events: none; }
-.adm-card-label { display: block; font-size: 9px; font-weight: 700; letter-spacing: 0.12em; color: rgba(255,255,255,0.35); text-transform: uppercase; margin-bottom: 6px; }
-.adm-hero-val-row { display: flex; align-items: baseline; gap: 4px; margin-bottom: 10px; }
-.adm-hero-val  { font-size: 48px; font-weight: 900; color: #ffffff; line-height: 1; letter-spacing: -0.03em; text-shadow: 0 0 30px rgba(0,229,255,0.25); }
-.adm-hero-unit { font-size: 24px; font-weight: 700; color: rgba(0,229,255,0.7); }
-.adm-bar-track { height: 5px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
-.adm-bar-fill  { height: 100%; background: linear-gradient(90deg, #0047cc, #00e5ff); border-radius: 3px; transition: width 0.8s cubic-bezier(0.34,1.56,0.64,1); box-shadow: 0 0 8px rgba(0,229,255,0.5); }
-.adm-card-sub  { font-size: 10px; color: rgba(255,255,255,0.28); line-height: 1.4; }
-
-.adm-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-.adm-card { background: rgba(13,22,42,0.9); border-radius: 14px; padding: 13px 12px; display: flex; flex-direction: column; gap: 4px; border: 1px solid rgba(255,255,255,0.06); }
-.adm-card-orange { border-left: 3px solid #ffae1f; }
-.adm-card-blue   { border-left: 3px solid #0091ff; }
-.adm-card-teal   { border-left: 3px solid #13deb9; }
-.adm-card-val    { font-size: 16px; font-weight: 800; color: #ffffff; letter-spacing: -0.01em; line-height: 1.2; }
-.adm-card-val small { font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.3); }
-.adm-card-ref    { font-size: 9px; color: rgba(255,255,255,0.2); }
-
-.adm-sec-section { display: flex; flex-direction: column; gap: 10px; }
-.adm-total-row   { display: flex; justify-content: space-between; align-items: center; padding: 0 2px; }
-.adm-total-label { font-size: 11px; color: rgba(255,255,255,0.3); font-weight: 600; }
-.adm-total-val   { font-size: 13px; font-weight: 800; color: #ffffff; }
-
-.adm-sec-grid { display: flex; flex-direction: column; gap: 8px; }
-.adm-sec-card { background: rgba(13,22,42,0.9); border: 1px solid rgba(255,255,255,0.06); border-radius: 14px; padding: 13px; display: flex; flex-direction: column; gap: 8px; }
-.adm-sec-card-top { display: flex; align-items: center; gap: 10px; }
-.adm-sec-icon  { width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
-.adm-sec-name  { font-size: 13px; font-weight: 700; color: #ffffff; }
-.adm-sec-val   { font-size: 22px; font-weight: 800; color: #ffffff; letter-spacing: -0.02em; }
-.adm-sec-val small { font-size: 12px; font-weight: 500; color: rgba(255,255,255,0.3); }
-.adm-sec-bar-track { height: 5px; background: rgba(255,255,255,0.07); border-radius: 3px; overflow: hidden; }
-.adm-sec-bar   { height: 100%; border-radius: 3px; transition: width 0.7s cubic-bezier(0.34,1.56,0.64,1); }
-.adm-sec-footer { display: flex; align-items: center; justify-content: space-between; }
-.adm-sec-pct   { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
-.adm-sec-ref   { font-size: 9px; color: rgba(255,255,255,0.22); }
-
-/* ════════════════════════════════════════════
-   RESPONSIVIDADE
-════════════════════════════════════════════ */
-@media (max-width: 500px) {
-  .hd-title    { font-size: 14px; }
-  .hd-eyebrow  { font-size: 8px; }
-  .hd-solar-icon { width: 32px; height: 32px; }
-  .hd-chips    { gap: 4px; }
-  .hd-chip     { font-size: 10px; padding: 3px 8px; }
-  .adm-grid    { grid-template-columns: 1fr 1fr; }
-  .pub-hero-val { font-size: 16px; }
-  .adm-hero-val { font-size: 36px; }
-}
-
-.v-row { height: 50vh; overflow: hidden; display: flex; flex-direction: column; }
-.leaflet-control-attribution { pointer-events: none; opacity: 0.3; font-size: 12px; z-index: 1; }
 </style>

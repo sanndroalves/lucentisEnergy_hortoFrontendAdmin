@@ -87,6 +87,7 @@ onBeforeUnmount(() => {
 
 <template>
   <NuxtLink v-if="marca" to="/" class="lxt-marca" aria-label="Ir para o Início">
+    <LxNebulosa class="lxt-neb" :particulas="22" :velocidade="0.8" />
     <img src="https://i.imgur.com/qZ92wWu.png" alt="LUCENTIS">
   </NuxtLink>
 
@@ -140,8 +141,10 @@ onBeforeUnmount(() => {
 </template>
 
 <style>
-.lxt-marca{position:fixed;top:calc(12px + env(safe-area-inset-top,0px));left:16px;z-index:1004;display:block;line-height:0;border-radius:12px}
-.lxt-marca img{height:46px;display:block;filter:drop-shadow(0 0 12px rgba(34,197,224,.45)) drop-shadow(0 0 26px rgba(168,85,247,.3));transition:transform .2s}
+.lxt-marca{position:fixed;top:calc(12px + env(safe-area-inset-top,0px));left:16px;z-index:1004;display:block;line-height:0;border-radius:12px;isolation:isolate}
+/* nebulosa animada atrás do logo (só nas páginas que mostram a marca no topo; a Início tem o próprio logo) */
+.lxt-neb{position:absolute;left:50%;top:50%;width:240%;height:300%;transform:translate(-50%,-50%);z-index:-1;opacity:.8}
+.lxt-marca img{position:relative;height:46px;display:block;filter:drop-shadow(0 1px 4px rgba(3,6,15,.8)) drop-shadow(0 0 1px rgba(3,6,15,.9));transition:transform .2s}
 .lxt-marca:hover img{transform:scale(1.05)}
 .lxt-marca:focus-visible{outline:2px solid #fff;outline-offset:3px}
 .lxt-perfil{position:fixed;top:calc(14px + env(safe-area-inset-top,0px));right:122px;z-index:1004;line-height:0}

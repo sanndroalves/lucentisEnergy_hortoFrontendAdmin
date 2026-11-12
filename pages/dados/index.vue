@@ -8,7 +8,13 @@ definePageMeta({ middleware: "sidebase-auth" });
 
 import UiParentCard from "@/components/shared/UiParentCard.vue";
 
+// "predios" não tem card: abre pelo botão discreto do cabeçalho
 const abaSelecionada = ref("geracao");
+const ABAS = [
+  { v: "geracao", txt: "Geração",      sub: "kWh gerado por usina no mês",    c: "--teal",   c2: "--purple", d: "M13 2L3 14h9l-1 8 10-12h-9l1-8z" },
+  { v: "usina",   txt: "Usina mensal", sub: "Consumo, fatura e injeções",     c: "--green",  c2: "--teal",   d: "M22 12h-4l-3 9L9 3l-3 9H2" },
+  { v: "semanal", txt: "Semanal",      sub: "Relatório da semana em PDF",     c: "--purple", c2: "--orange", d: "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" },
+];
 const tipos = [
   { label: "Geração",          value: "geracao"  },
   { label: "Usina Mensal",     value: "usina"    },
@@ -24,12 +30,20 @@ const anoGeracao = ref(null);
 const mesUsina   = ref(null);
 const anoUsina   = ref(null);
 
+const carregandoUsinas = ref(true);
+
 onMounted(async () => {
-  const fetchedUsinas   = await $fetch(`${API_BASE_URL}/usina/`);
-  const fetchedUnidades = await $fetch(`${API_BASE_URL}/unidadecompensacao`);
-  usinas.value   = fetchedUsinas   || [];
-  unidades.value = fetchedUnidades || [];
-  montarLinhas();
+  try {
+    const [fetchedUsinas, fetchedUnidades] = await Promise.all([
+      $fetch(`${API_BASE_URL}/usina/`),
+      $fetch(`${API_BASE_URL}/unidadecompensacao`),
+    ]);
+    usinas.value   = fetchedUsinas   || [];
+    unidades.value = fetchedUnidades || [];
+    montarLinhas();
+  } finally {
+    carregandoUsinas.value = false;
+  }
 });
 
 const linhasGeracao = ref([]);
@@ -49,6 +63,12 @@ const loadingGeracao = ref(false);
 const loadingUsina   = ref(false);
 const snackbar       = ref(false);
 const snackbarTexto  = ref("");
+const snackbarErro   = ref(false);
+let snackTimer = 0;
+function avisar(texto, erro = false) {
+  snackbarTexto.value = texto; snackbarErro.value = erro; snackbar.value = true;
+  clearTimeout(snackTimer); snackTimer = setTimeout(() => { snackbar.value = false; }, 4000);
+}
 
 async function enviarGeracao() {
   try {
@@ -59,9 +79,9 @@ async function enviarGeracao() {
         body: { idGeradora: item.usina, geracao: item.valor || 0, mes: mesGeracao.value, ano: anoGeracao.value }
       });
     }
-    snackbarTexto.value = "Gerações enviadas com sucesso!"; snackbar.value = true;
+    avisar("Gerações enviadas com sucesso!");
   } catch (e) {
-    snackbarTexto.value = "Erro ao enviar gerações."; snackbar.value = true;
+    avisar("Erro ao enviar gerações.", true);
   } finally { loadingGeracao.value = false; }
 }
 
@@ -74,9 +94,9 @@ async function enviarUsinaMensal() {
         body: { idGeradora: item.usina, injetadoPonta: item.injetadoPonta || 0, injetadoFPonta: item.injetadoFPonta || 0, consumoReais: item.valorRS || 0, consumoKWH: item.consumokWh || 0, mes: mesUsina.value, ano: anoUsina.value }
       });
     }
-    snackbarTexto.value = "Dados das usinas enviados com sucesso!"; snackbar.value = true;
+    avisar("Dados das usinas enviados com sucesso!");
   } catch (e) {
-    snackbarTexto.value = "Erro ao enviar dados das usinas."; snackbar.value = true;
+    avisar("Erro ao enviar dados das usinas.", true);
   } finally { loadingUsina.value = false; }
 }
 
@@ -88,6 +108,7 @@ const MESES = [
   { v:5,l:'Maio'     },{ v:6,l:'Junho'    },{ v:7,l:'Julho'    },{ v:8,l:'Agosto'   },
   { v:9,l:'Setembro' },{ v:10,l:'Outubro' },{ v:11,l:'Novembro'},{ v:12,l:'Dezembro'}
 ];
+const periodoTxt = (m, a) => (m && a ? `${MESES[m - 1].l} de ${a}` : "Selecione mês e ano");
 
 // ── SEMANAL ───────────────────────────────────────────────────
 const semanaInicio = ref('');
@@ -192,7 +213,10 @@ const gerarPDFSemanal = async () => {
 
   } catch (err) {
     console.error(err);
+    avisar("Não foi possível gerar o PDF.", true);
   } finally {
+    // segurança: se o html2pdf falhar, a camada dele não pode ficar presa na tela
+    document.querySelectorAll('.html2pdf__overlay').forEach(n => n.remove());
     gerandoPDF.value = false;
   }
 };
@@ -200,371 +224,226 @@ const gerarPDFSemanal = async () => {
 </script>
 
 <template>
-  <div class="dd-root">
-
-    <!-- ══════════════════════════════
-         HEADER DA PÁGINA
-    ══════════════════════════════ -->
-    <div class="dd-header">
-      <div class="dd-header-left">
-        <div class="dd-header-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round">
-            <ellipse cx="12" cy="5" rx="9" ry="3"/>
-            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
-            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
-          </svg>
-        </div>
-        <div>
-          <nav class="dd-breadcrumb">
-            <a href="/">Início</a><span>›</span>
-            <a href="/">Gerenciamento</a><span>›</span>
-            <span>Dados</span>
-          </nav>
-          <h1 class="dd-title">Dados</h1>
-          <p class="dd-sub">Gerenciamento de lançamentos e inserção de dados no sistema</p>
-        </div>
+  <div class="lx-page">
+    <!-- Cabeçalho -->
+    <header class="lx-head">
+      <div>
+        <nav class="lx-crumb" aria-label="Você está em">
+          <NuxtLink to="/">Início</NuxtLink><span class="sep">›</span><span>Gerenciamento</span><span class="sep">›</span><b>Dados</b>
+          <template v-if="abaSelecionada === 'predios'"><span class="sep">›</span><b>Prédios download</b></template>
+        </nav>
+        <h1 class="lx-title">Lançamento de <span class="grad">dados</span></h1>
+        <p class="lx-sub">Inserção de geração, dados mensais das usinas e relatório semanal</p>
       </div>
-      <img src="https://i.imgur.com/vpEwz5j.png" class="dd-header-img" alt="">
-    </div>
-
-    <div class="dd-body">
-
-      <!-- ══════════════════════════════
-           TABS
-      ══════════════════════════════ -->
-      <p class="dd-tabs-lbl">Selecione o módulo</p>
-      <div class="dd-tabs">
-        <button
-          v-for="t in tipos" :key="t.value"
-          class="dd-tab"
-          :class="{ 'dd-tab-active': abaSelecionada===t.value }"
-          :style="abaSelecionada===t.value ? {
-            background: ({geracao:'#EEF2FF',usina:'#ECFDF5',predios:'#FFFBEB',semanal:'#F5F3FF'})[t.value],
-            borderColor: ({geracao:'#4F46E5',usina:'#059669',predios:'#D97706',semanal:'#7C3AED'})[t.value],
-            color: ({geracao:'#4F46E5',usina:'#059669',predios:'#D97706',semanal:'#7C3AED'})[t.value]
-          } : {}"
-          @click="abaSelecionada=t.value"
-        >
-          <!-- ícone por aba -->
-          <div class="dd-tab-icon"
-            :style="abaSelecionada===t.value
-              ? { background: ({geracao:'#4F46E5',usina:'#059669',predios:'#D97706',semanal:'#7C3AED'})[t.value], color:'#fff' }
-              : { background:'#F8FAFC', color:'#94A3B8' }">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <path v-if="t.value==='geracao'"  d="M13 10V3L4 14h7v7l9-11h-7z"/>
-              <path v-if="t.value==='usina'"    d="M22 12h-4l-3 9L9 3l-3 9H2"/>
-              <path v-if="t.value==='predios'"  d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
-              <path v-if="t.value==='semanal'"  d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>
-            </svg>
-          </div>
-          <span class="dd-tab-name">{{ t.label }}</span>
+      <div class="lx-head-actions">
+        <button class="dd-escondido" :class="{ on: abaSelecionada === 'predios' }" :aria-pressed="abaSelecionada === 'predios'"
+          title="Marcar prédios para download" @click="abaSelecionada = 'predios'">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+          Prédios download
         </button>
       </div>
+    </header>
 
-      <!-- ══════════════════════════════
-           PAINEL — GERAÇÃO
-      ══════════════════════════════ -->
-      <transition name="dd-fade">
-      <div v-if="abaSelecionada==='geracao'" class="dd-panel">
+    <!-- Abas -->
+    <nav class="dd-abas" aria-label="Tipo de lançamento">
+      <button v-for="a in ABAS" :key="a.v" class="dd-aba" :class="{ on: abaSelecionada === a.v }" :aria-current="abaSelecionada === a.v ? 'page' : undefined"
+        :style="{ '--c': `var(${a.c})`, '--c2': `var(${a.c2})` }" @click="abaSelecionada = a.v">
+        <span class="dd-aba-ic">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path :d="a.d"/></svg>
+        </span>
+        <span class="dd-aba-tx"><b>{{ a.txt }}</b><small>{{ a.sub }}</small></span>
+      </button>
+    </nav>
 
-        <div class="dd-panel-hd" style="border-left-color:#4F46E5">
-          <div class="dd-ph-num" style="background:#4F46E5">01</div>
-          <div>
-            <h3 class="dd-ph-title">Inserir Geração</h3>
-            <p class="dd-ph-sub">Informe o kWh gerado por cada usina no período selecionado</p>
+    <div v-if="carregandoUsinas" class="lx-panel">
+      <div class="lx-loading"><span class="lx-spin"></span><b>Carregando usinas…</b><span>Montando as tabelas de lançamento</span></div>
+    </div>
+
+    <template v-else>
+      <!-- ── GERAÇÃO ── -->
+      <Transition name="lx-fade" mode="out-in">
+        <section v-if="abaSelecionada === 'geracao'" key="geracao" class="lx-panel accent" style="--c:var(--teal)">
+          <div class="lx-panel-hd">
+            <div>
+              <h3><span class="lx-ic" style="--c:var(--teal)">⚡</span>Inserir geração</h3>
+              <p>kWh gerado por cada usina no mês selecionado</p>
+            </div>
+            <span class="lx-pill" :style="{ '--c': mesGeracao && anoGeracao ? 'var(--teal)' : 'var(--orange)' }"><i></i>{{ periodoTxt(mesGeracao, anoGeracao) }}</span>
           </div>
-        </div>
 
-        <!-- Filtros -->
-        <div class="dd-filters">
-          <div class="dd-fg">
-            <span class="dd-flbl">Mês</span>
-            <div class="dd-chip-row">
-              <button v-for="m in MESES" :key="m.v"
-                class="dd-chip" :class="mesGeracao===m.v ? 'dd-chip-indigo' : ''"
-                @click="mesGeracao=m.v">{{ m.l.slice(0,3) }}</button>
+          <div class="dd-filtros">
+            <div class="lx-field"><label>Mês</label>
+              <div class="lx-anos"><button v-for="m in MESES" :key="m.v" class="lx-ano" :class="{ on: mesGeracao === m.v }" style="--c:var(--teal)" @click="mesGeracao = m.v">{{ m.l.slice(0, 3) }}</button></div>
+            </div>
+            <div class="lx-field"><label>Ano</label>
+              <div class="lx-anos"><button v-for="a in ANOS" :key="a" class="lx-ano" :class="{ on: anoGeracao === a }" style="--c:var(--teal)" @click="anoGeracao = a">{{ a }}</button></div>
             </div>
           </div>
-          <div class="dd-fg">
-            <span class="dd-flbl">Ano</span>
-            <div class="dd-chip-row">
-              <button v-for="a in ANOS" :key="a"
-                class="dd-chip dd-chip-year" :class="anoGeracao===a ? 'dd-chip-indigo' : ''"
-                @click="anoGeracao=a">{{ a }}</button>
+
+          <div class="lx-tbl-wrap">
+            <table class="lx-tbl dd-tbl">
+              <thead><tr><th>UC</th><th>Usina</th><th class="dd-col-in">Geração (kWh)</th></tr></thead>
+              <tbody>
+                <tr v-for="item in linhasGeracao" :key="item.usina">
+                  <td class="lx-mono">{{ item.uc }}</td>
+                  <td class="dd-nome">{{ item.nome }}</td>
+                  <td><input v-model="item.valor" type="number" class="lx-input dd-in" placeholder="0,00" /></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="dd-acoes">
+            <small v-if="!mesGeracao || !anoGeracao" class="dd-aviso">Selecione o mês e o ano antes de enviar.</small>
+            <button class="lx-btn" style="--c1:var(--teal);--c2:var(--purple)" :disabled="loadingGeracao || !mesGeracao || !anoGeracao" @click="enviarGeracao">
+              <span v-if="loadingGeracao" class="lx-spin"></span>
+              <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              {{ loadingGeracao ? 'Enviando…' : 'Enviar geração' }}
+            </button>
+          </div>
+        </section>
+
+        <!-- ── USINA MENSAL ── -->
+        <section v-else-if="abaSelecionada === 'usina'" key="usina" class="lx-panel accent" style="--c:var(--green)">
+          <div class="lx-panel-hd">
+            <div>
+              <h3><span class="lx-ic" style="--c:var(--green)">☀</span>Usina mensal</h3>
+              <p>Consumo, fatura e injeções mensais de cada usina</p>
+            </div>
+            <span class="lx-pill" :style="{ '--c': mesUsina && anoUsina ? 'var(--green)' : 'var(--orange)' }"><i></i>{{ periodoTxt(mesUsina, anoUsina) }}</span>
+          </div>
+
+          <div class="dd-filtros">
+            <div class="lx-field"><label>Mês</label>
+              <div class="lx-anos"><button v-for="m in MESES" :key="m.v" class="lx-ano" :class="{ on: mesUsina === m.v }" style="--c:var(--green)" @click="mesUsina = m.v">{{ m.l.slice(0, 3) }}</button></div>
+            </div>
+            <div class="lx-field"><label>Ano</label>
+              <div class="lx-anos"><button v-for="a in ANOS" :key="a" class="lx-ano" :class="{ on: anoUsina === a }" style="--c:var(--green)" @click="anoUsina = a">{{ a }}</button></div>
             </div>
           </div>
-        </div>
 
-        <!-- Tabela -->
-        <div class="dd-tbl-scroll">
-          <table class="dd-table">
-            <thead class="dd-thead-indigo">
-              <tr>
-                <th class="dd-th">UC</th>
-                <th class="dd-th">Usina</th>
-                <th class="dd-th" style="min-width:180px">Geração (kWh)</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(item,i) in linhasGeracao" :key="item.usina" class="dd-tr" :class="{'dd-tr-alt':i%2===1}">
-                <td class="dd-td dd-mono">{{ item.uc }}</td>
-                <td class="dd-td" style="font-weight:700">{{ item.nome }}</td>
-                <td class="dd-td">
-                  <input v-model="item.valor" type="number" class="dd-input" placeholder="0,00"/>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="dd-panel-actions">
-          <button class="dd-btn-send dd-btn-indigo" :disabled="loadingGeracao" @click="enviarGeracao">
-            <span v-if="loadingGeracao" class="dd-spinner"></span>
-            <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-            </svg>
-            {{ loadingGeracao ? 'Enviando...' : 'Enviar Geração' }}
-          </button>
-        </div>
-
-      </div>
-      </transition>
-
-      <!-- ══════════════════════════════
-           PAINEL — USINA MENSAL
-      ══════════════════════════════ -->
-      <transition name="dd-fade">
-      <div v-if="abaSelecionada==='usina'" class="dd-panel">
-
-        <div class="dd-panel-hd" style="border-left-color:#059669">
-          <div class="dd-ph-num" style="background:#059669">02</div>
-          <div>
-            <h3 class="dd-ph-title">Usina Mensal</h3>
-            <p class="dd-ph-sub">Consumo, fatura e injeções mensais de cada usina</p>
+          <div class="lx-tbl-wrap">
+            <table class="lx-tbl dd-tbl">
+              <thead><tr><th>UC</th><th>Usina</th><th class="dd-col-in">Consumo kWh</th><th class="dd-col-in">R$</th><th class="dd-col-in">Injet. ponta</th><th class="dd-col-in">Injet. f. ponta</th></tr></thead>
+              <tbody>
+                <tr v-for="item in linhasUsina" :key="item.usina">
+                  <td class="lx-mono">{{ item.uc }}</td>
+                  <td class="dd-nome">{{ item.nome }}</td>
+                  <td><input v-model="item.consumokWh" type="number" step="0.01" class="lx-input dd-in" placeholder="0,00" /></td>
+                  <td><input v-model="item.valorRS" type="number" step="0.01" class="lx-input dd-in" placeholder="0,00" /></td>
+                  <td><input v-model="item.injetadoPonta" type="number" step="0.01" class="lx-input dd-in" placeholder="0,00" /></td>
+                  <td><input v-model="item.injetadoFPonta" type="number" step="0.01" class="lx-input dd-in" placeholder="0,00" /></td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-        </div>
 
-        <div class="dd-filters">
-          <div class="dd-fg">
-            <span class="dd-flbl">Mês</span>
-            <div class="dd-chip-row">
-              <button v-for="m in MESES" :key="m.v"
-                class="dd-chip" :class="mesUsina===m.v ? 'dd-chip-green' : ''"
-                @click="mesUsina=m.v">{{ m.l.slice(0,3) }}</button>
+          <div class="dd-acoes">
+            <small v-if="!mesUsina || !anoUsina" class="dd-aviso">Selecione o mês e o ano antes de enviar.</small>
+            <button class="lx-btn" style="--c1:var(--green);--c2:var(--teal)" :disabled="loadingUsina || !mesUsina || !anoUsina" @click="enviarUsinaMensal">
+              <span v-if="loadingUsina" class="lx-spin"></span>
+              <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              {{ loadingUsina ? 'Enviando…' : 'Enviar dados das usinas' }}
+            </button>
+          </div>
+        </section>
+
+        <!-- ── SEMANAL ── -->
+        <section v-else-if="abaSelecionada === 'semanal'" key="semanal" class="lx-panel accent" style="--c:var(--purple)">
+          <div class="lx-panel-hd">
+            <div>
+              <h3><span class="lx-ic" style="--c:var(--purple)">▤</span>Relatório semanal</h3>
+              <p>Geração por usina no período e exportação do relatório em PDF</p>
+            </div>
+            <span class="lx-pill" :style="{ '--c': semanaInicio && semanaFim ? 'var(--purple)' : 'var(--orange)' }"><i></i>{{ periodoLabel }}</span>
+          </div>
+
+          <div class="dd-filtros">
+            <div class="dd-periodo">
+              <div class="lx-field"><label for="dd-de">De</label><input id="dd-de" v-model="semanaInicio" type="date" class="lx-input" /></div>
+              <span class="dd-seta">→</span>
+              <div class="lx-field"><label for="dd-ate">Até</label><input id="dd-ate" v-model="semanaFim" type="date" class="lx-input" /></div>
+            </div>
+            <p class="dd-dica">Digite a geração direto ou use fórmulas como <code>=100+152+250</code>; o resultado é calculado na hora.</p>
+          </div>
+
+          <div class="lx-tbl-wrap">
+            <table class="lx-tbl dd-tbl">
+              <thead><tr><th>UC</th><th>Usina</th><th class="dd-col-expr">Fórmula / valor</th><th class="r">Resultado (kWh)</th></tr></thead>
+              <tbody>
+                <tr v-for="item in linhasSemanal" :key="item.uc" :class="{ 'dd-erro': item.erro }">
+                  <td class="lx-mono">{{ item.uc }}</td>
+                  <td class="dd-nome">{{ item.nome }}</td>
+                  <td>
+                    <input v-model="item.expr" class="lx-input dd-in dd-expr" :class="{ err: item.erro }" placeholder="ex: =150+200+175" spellcheck="false"
+                      @input="avaliarExpr(item)" @blur="avaliarExpr(item)" />
+                  </td>
+                  <td class="r dd-res">
+                    <span v-if="item.erro" class="lx-pill" style="--c:var(--red)">Erro</span>
+                    <b v-else-if="item.valor > 0">{{ item.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }}</b>
+                    <span v-else class="dd-zero">—</span>
+                  </td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="3">Total gerado no período</td>
+                  <td class="r dd-total">{{ totalSemanal.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) }} kWh</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <div class="dd-acoes">
+            <small v-if="!semanaInicio || !semanaFim" class="dd-aviso">Selecione o período para gerar o PDF.</small>
+            <button class="lx-btn" style="--c1:var(--purple);--c2:var(--teal)" :disabled="gerandoPDF || !semanaInicio || !semanaFim" @click="gerarPDFSemanal">
+              <span v-if="gerandoPDF" class="lx-spin"></span>
+              <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M8 13h8M8 17h5"/></svg>
+              {{ gerandoPDF ? 'Gerando PDF…' : 'Gerar PDF do relatório' }}
+            </button>
+          </div>
+        </section>
+
+        <!-- ── PRÉDIOS DOWNLOAD (aba escondida) ── -->
+        <section v-else-if="abaSelecionada === 'predios'" key="predios" class="lx-panel accent" style="--c:var(--orange)">
+          <div class="lx-panel-hd">
+            <div>
+              <h3><span class="lx-ic" style="--c:var(--orange)">⌂</span>Prédios download</h3>
+              <p>Marque as unidades que terão arquivo gerado para download</p>
+            </div>
+            <div class="dd-hd-r">
+              <span class="lx-pill" style="--c:var(--orange)">{{ prediosFiltrados.filter(p => p.download).length }} de {{ prediosFiltrados.length }} marcados</span>
+              <button class="lx-btn-ghost sm" @click="abaSelecionada = 'geracao'">Fechar</button>
             </div>
           </div>
-          <div class="dd-fg">
-            <span class="dd-flbl">Ano</span>
-            <div class="dd-chip-row">
-              <button v-for="a in ANOS" :key="a"
-                class="dd-chip dd-chip-year" :class="anoUsina===a ? 'dd-chip-green' : ''"
-                @click="anoUsina=a">{{ a }}</button>
-            </div>
+
+          <div class="lx-tbl-wrap">
+            <table class="lx-tbl dd-tbl">
+              <thead><tr><th>UC</th><th>Prédio</th><th class="c">Download</th><th class="c">Status</th></tr></thead>
+              <tbody>
+                <tr v-for="item in prediosFiltrados" :key="item.id">
+                  <td class="lx-mono">{{ item.uc }}</td>
+                  <td class="dd-nome">{{ item.nome }}</td>
+                  <td class="c">
+                    <button class="dd-check" :class="{ on: item.download }" :aria-pressed="!!item.download" :aria-label="`Marcar ${item.nome} para download`" @click="marcarDownload(item)">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    </button>
+                  </td>
+                  <td class="c">
+                    <span v-if="item.download" class="lx-pill" style="--c:var(--green)"><i></i>Download</span>
+                    <span v-else class="dd-zero">—</span>
+                  </td>
+                </tr>
+                <tr v-if="!prediosFiltrados.length"><td colspan="4" class="lx-empty">Nenhum prédio ativo encontrado.</td></tr>
+              </tbody>
+            </table>
           </div>
-        </div>
+        </section>
+      </Transition>
+    </template>
 
-        <div class="dd-tbl-scroll">
-          <table class="dd-table">
-            <thead class="dd-thead-green">
-              <tr>
-                <th class="dd-th">UC</th>
-                <th class="dd-th">Usina</th>
-                <th class="dd-th" style="min-width:150px">Consumo kWh</th>
-                <th class="dd-th" style="min-width:150px">R$</th>
-                <th class="dd-th" style="min-width:150px">Injet. Ponta</th>
-                <th class="dd-th" style="min-width:150px">Injet. F.Ponta</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(item,i) in linhasUsina" :key="item.usina" class="dd-tr" :class="{'dd-tr-alt':i%2===1}">
-                <td class="dd-td dd-mono">{{ item.uc }}</td>
-                <td class="dd-td" style="font-weight:700">{{ item.nome }}</td>
-                <td class="dd-td"><input v-model="item.consumokWh"    type="number" step="0.01" class="dd-input" placeholder="0,00"/></td>
-                <td class="dd-td"><input v-model="item.valorRS"       type="number" step="0.01" class="dd-input" placeholder="0,00"/></td>
-                <td class="dd-td"><input v-model="item.injetadoPonta" type="number" step="0.01" class="dd-input" placeholder="0,00"/></td>
-                <td class="dd-td"><input v-model="item.injetadoFPonta"type="number" step="0.01" class="dd-input" placeholder="0,00"/></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="dd-panel-actions">
-          <button class="dd-btn-send dd-btn-green" :disabled="loadingUsina" @click="enviarUsinaMensal">
-            <span v-if="loadingUsina" class="dd-spinner dd-spinner-green"></span>
-            <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-            </svg>
-            {{ loadingUsina ? 'Enviando...' : 'Enviar Dados das Usinas' }}
-          </button>
-        </div>
-
-      </div>
-      </transition>
-
-      <!-- ══════════════════════════════
-           PAINEL — PRÉDIOS
-      ══════════════════════════════ -->
-      <transition name="dd-fade">
-      <div v-if="abaSelecionada==='predios'" class="dd-panel">
-
-        <div class="dd-panel-hd" style="border-left-color:#D97706">
-          <div class="dd-ph-num" style="background:#D97706">03</div>
-          <div>
-            <h3 class="dd-ph-title">Prédios Download</h3>
-            <p class="dd-ph-sub">Marque as unidades que terão arquivo gerado para download</p>
-          </div>
-        </div>
-
-        <div class="dd-tbl-scroll">
-          <table class="dd-table">
-            <thead class="dd-thead-amber">
-              <tr>
-                <th class="dd-th">UC</th>
-                <th class="dd-th">Prédio</th>
-                <th class="dd-th" style="text-align:center;width:90px">Download</th>
-                <th class="dd-th" style="text-align:center">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(item,i) in prediosFiltrados" :key="item.id" class="dd-tr" :class="{'dd-tr-alt':i%2===1}">
-                <td class="dd-td dd-mono">{{ item.uc }}</td>
-                <td class="dd-td" style="font-weight:600">{{ item.nome }}</td>
-                <td class="dd-td" style="text-align:center">
-                  <button class="dd-check-btn" :class="{'dd-check-on': item.download}" @click="marcarDownload(item)">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round">
-                      <polyline points="20 6 9 17 4 12"/>
-                    </svg>
-                  </button>
-                </td>
-                <td class="dd-td" style="text-align:center">
-                  <span v-if="item.download" class="dd-pill-green">
-                    <span class="dd-pill-dot"></span>Download
-                  </span>
-                  <span v-else class="dd-pill-slate">—</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-      </div>
-      </transition>
-
-      <!-- ══════════════════════════════
-           PAINEL — SEMANAL
-      ══════════════════════════════ -->
-      <transition name="dd-fade">
-      <div v-if="abaSelecionada==='semanal'" class="dd-panel">
-
-        <div class="dd-panel-hd" style="border-left-color:#7C3AED">
-          <div class="dd-ph-num" style="background:#7C3AED">04</div>
-          <div>
-            <h3 class="dd-ph-title">Relatório Semanal</h3>
-            <p class="dd-ph-sub">Insira os dados de geração por usina e exporte o relatório PDF</p>
-          </div>
-        </div>
-
-        <!-- Seleção de período -->
-        <div class="dd-filters">
-          <div class="dd-sem-periodo">
-            <div class="dd-fg">
-              <span class="dd-flbl">De</span>
-              <input type="date" v-model="semanaInicio" class="dd-date-input" />
-            </div>
-            <div class="dd-sem-arrow">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2" stroke-linecap="round">
-                <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
-              </svg>
-            </div>
-            <div class="dd-fg">
-              <span class="dd-flbl">Até</span>
-              <input type="date" v-model="semanaFim" class="dd-date-input" />
-            </div>
-            <div class="dd-sem-badge" v-if="semanaInicio && semanaFim">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/>
-              </svg>
-              {{ periodoLabel }}
-            </div>
-          </div>
-          <p class="dd-sem-hint">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-            Digite a geração diretamente ou use fórmulas como <code>=100+152+250</code> — o resultado é calculado automaticamente.
-          </p>
-        </div>
-
-        <!-- Tabela de entrada tipo Excel -->
-        <div class="dd-tbl-scroll">
-          <table class="dd-table dd-tbl-excel">
-            <thead class="dd-thead-violet">
-              <tr>
-                <th class="dd-th dd-th-uc">UC</th>
-                <th class="dd-th">Usina</th>
-                <th class="dd-th dd-th-expr">Fórmula / Valor</th>
-                <th class="dd-th dd-th-result">Resultado (kWh)</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(item, i) in linhasSemanal" :key="item.uc"
-                class="dd-tr" :class="{'dd-tr-alt': i%2===1, 'dd-tr-erro': item.erro}">
-                <td class="dd-td dd-mono">{{ item.uc }}</td>
-                <td class="dd-td" style="font-weight:600;min-width:180px">{{ item.nome }}</td>
-                <!-- input tipo célula excel -->
-                <td class="dd-td dd-td-excel">
-                  <input
-                    v-model="item.expr"
-                    class="dd-excel-input"
-                    :class="{ 'dd-excel-input-err': item.erro }"
-                    placeholder="ex: =150+200+175"
-                    @input="avaliarExpr(item)"
-                    @blur="avaliarExpr(item)"
-                    spellcheck="false"
-                  />
-                </td>
-                <!-- resultado calculado -->
-                <td class="dd-td dd-td-result">
-                  <span v-if="item.erro" class="dd-result-err">Erro</span>
-                  <span v-else-if="item.valor > 0" class="dd-result-val">
-                    {{ item.valor.toLocaleString('pt-BR', {minimumFractionDigits:2}) }}
-                  </span>
-                  <span v-else class="dd-result-zero">—</span>
-                </td>
-              </tr>
-            </tbody>
-            <tfoot>
-              <tr class="dd-tfoot-row">
-                <td colspan="3" class="dd-tfoot-lbl">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                  Total gerado no período
-                </td>
-                <td class="dd-tfoot-val">
-                  {{ totalSemanal.toLocaleString('pt-BR', {minimumFractionDigits:2}) }} kWh
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-
-        <div class="dd-panel-actions">
-          <button class="dd-btn-send dd-btn-violet"
-            :disabled="gerandoPDF || !semanaInicio || !semanaFim"
-            @click="gerarPDFSemanal">
-            <span v-if="gerandoPDF" class="dd-spinner"></span>
-            <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <path d="M8 13h8M8 17h5"/>
-            </svg>
-            {{ gerandoPDF ? 'Gerando PDF...' : 'Gerar PDF do Relatório' }}
-          </button>
-        </div>
-
-      </div>
-      </transition>
-
-      <!-- ══════════════════════════════
-           DOCUMENTO PDF SEMANAL (oculto, só para renderização)
-      ══════════════════════════════ -->
+    <!-- Documento do PDF semanal: fica fora da tela, só é usado para gerar o arquivo -->
+    <div class="dd-pdf-host" aria-hidden="true">
       <div id="pdf-semanal" class="sem-pdf-doc">
 
         <!-- CAPA -->
@@ -665,350 +544,99 @@ const gerarPDFSemanal = async () => {
         </div>
 
       </div>
-
     </div>
 
-    <!-- ══════════════════════════════
-         SNACKBAR
-    ══════════════════════════════ -->
-    <transition name="dd-snack">
-      <div v-if="snackbar" class="dd-snackbar" @click="snackbar=false">
-        <div class="dd-snack-icon">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-            <polyline points="20 6 9 17 4 12"/>
-          </svg>
-        </div>
-        {{ snackbarTexto }}
+    <!-- Aviso -->
+    <Transition name="dd-toast">
+      <div v-if="snackbar" class="dd-toast" :class="{ err: snackbarErro }" role="status" @click="snackbar = false">
+        <span class="dd-toast-ic">{{ snackbarErro ? '!' : '✓' }}</span>{{ snackbarTexto }}
       </div>
-    </transition>
-
+    </Transition>
   </div>
 </template>
 
+<style scoped>
+/* ── Abas ── */
+.dd-abas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 18px; }
+.dd-aba {
+  all: unset; box-sizing: border-box; cursor: pointer; position: relative; overflow: hidden;
+  display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 18px;
+  background: var(--card); border: 1px solid var(--line); backdrop-filter: blur(10px);
+  transition: transform .2s, border-color .2s, box-shadow .2s;
+}
+.dd-aba::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: linear-gradient(90deg, var(--c), var(--c2)); opacity: .5; transition: opacity .2s; }
+.dd-aba:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--c) 45%, transparent); }
+.dd-aba.on { border-color: var(--c); box-shadow: 0 0 36px -14px var(--c); background: linear-gradient(135deg, color-mix(in srgb, var(--c) 16%, transparent), var(--card) 70%); }
+.dd-aba.on::before { opacity: 1; box-shadow: 0 0 14px var(--c); }
+.dd-aba:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.dd-aba-ic { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; flex: none; color: #fff; background: linear-gradient(135deg, var(--c), var(--c2)); }
+.dd-aba-tx { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dd-aba-tx b { font-size: 14.5px; font-weight: 600; color: var(--tx); }
+.dd-aba-tx small { font-size: 11.5px; color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* botão discreto (Prédios download) */
+.dd-escondido {
+  all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+  font: 500 12px var(--font); color: var(--mut); padding: 6px 10px; border-radius: 999px; opacity: .7;
+  transition: opacity .2s, color .2s, background .2s;
+}
+.dd-escondido:hover, .dd-escondido.on { opacity: 1; color: var(--orange); background: rgba(255, 161, 46, .08); }
+.dd-escondido:focus-visible { outline: 2px solid #fff; opacity: 1; }
+
+/* ── Painel ── */
+.dd-filtros { display: flex; flex-direction: column; gap: 14px; padding: 4px 0 16px; margin-bottom: 6px; border-bottom: 1px solid var(--line2); }
+.dd-periodo { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.dd-periodo .lx-input { min-width: 170px; }
+.dd-seta { color: var(--mut); padding-bottom: 10px; }
+.dd-dica { margin: 0; font-size: 12px; color: var(--mut); }
+.dd-dica code { font-family: var(--mono); color: var(--purple); background: rgba(168, 85, 247, .12); padding: 1px 6px; border-radius: 6px; }
+.dd-hd-r { display: flex; align-items: center; gap: 10px; }
+
+.dd-tbl td { padding-top: 6px; padding-bottom: 6px; }
+.dd-nome { font-weight: 500; min-width: 180px; }
+.dd-col-in { min-width: 150px; }
+.dd-col-expr { min-width: 240px; }
+.dd-in { padding: 7px 10px; border-radius: 10px; font-family: var(--mono); font-size: 12.5px; }
+.dd-expr.err { border-color: var(--red); box-shadow: 0 0 0 3px rgba(255, 95, 109, .15); }
+.dd-erro { background: rgba(255, 95, 109, .05); }
+.dd-res b { font-family: var(--mono); color: var(--purple); font-weight: 600; }
+.dd-zero { color: var(--mut); }
+.dd-total { font-family: var(--mono); color: var(--purple); font-size: 14px; }
+
+.dd-acoes { display: flex; align-items: center; justify-content: flex-end; gap: 14px; flex-wrap: wrap; padding-top: 16px; }
+.dd-aviso { font-size: 12px; color: var(--orange); }
+
+.dd-check {
+  all: unset; box-sizing: border-box; cursor: pointer; width: 28px; height: 28px; border-radius: 9px; display: inline-grid; place-items: center;
+  border: 1px solid var(--line); color: transparent; background: rgba(255, 255, 255, .04); transition: background .2s, border-color .2s, color .2s;
+}
+.dd-check:hover { border-color: var(--orange); }
+.dd-check.on { color: #06101a; background: var(--orange); border-color: transparent; box-shadow: 0 0 14px -3px var(--orange); }
+.dd-check:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+/* documento do PDF semanal: renderizado fora da tela */
+.dd-pdf-host { position: fixed; left: -10000px; top: 0; pointer-events: none; }
+
+/* ── Aviso ── */
+.dd-toast {
+  position: fixed; left: 50%; bottom: 110px; transform: translateX(-50%); z-index: 2000; cursor: pointer;
+  display: flex; align-items: center; gap: 10px; padding: 11px 18px 11px 12px; border-radius: 14px; font-size: 13px; font-weight: 500; color: var(--tx);
+  background: var(--bg2); border: 1px solid rgba(52, 211, 122, .45); box-shadow: 0 10px 40px -10px rgba(0, 0, 0, .7), 0 0 30px -12px var(--green);
+}
+.dd-toast.err { border-color: rgba(255, 95, 109, .5); box-shadow: 0 10px 40px -10px rgba(0, 0, 0, .7), 0 0 30px -12px var(--red); }
+.dd-toast-ic { width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center; font-weight: 700; font-size: 13px; color: #06101a; background: var(--green); }
+.dd-toast.err .dd-toast-ic { background: var(--red); }
+.dd-toast-enter-active, .dd-toast-leave-active { transition: opacity .25s, transform .25s; }
+.dd-toast-enter-from, .dd-toast-leave-to { opacity: 0; transform: translate(-50%, 12px); }
+
+@media (max-width: 760px) { .dd-abas { grid-template-columns: 1fr; } }
+</style>
+
 <style>
+/* Documento do PDF semanal (tema claro fixo; não usa os tokens do tema escuro) */
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=DM+Mono:wght@400;500&display=swap');
-
-/* ══════ ROOT ══════ */
-.dd-root {
-  min-height: 100vh !important;
-  background: #F0FDF9 !important;
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important;
-  color: #0f172a !important;
-  padding-bottom: 48px !important;
-}
-
-/* ══════ HEADER ══════ */
-.dd-header {
-  background: linear-gradient(135deg, #ECFDF5 0%, #EEF2FF 100%) !important;
-  border-bottom: 1px solid #E2E8F0 !important;
-  padding: 24px 28px 20px !important;
-  margin-bottom: 28px !important;
-  display: flex !important; align-items: center !important;
-  justify-content: space-between !important; overflow: hidden !important;
-}
-.dd-header-left  { display: flex !important; align-items: center !important; gap: 16px !important; }
-.dd-header-icon  {
-  width: 48px !important; height: 48px !important; border-radius: 13px !important;
-  background: #059669 !important; display: flex !important;
-  align-items: center !important; justify-content: center !important;
-  box-shadow: 0 4px 14px rgba(5,150,105,.3) !important; flex-shrink: 0 !important;
-}
-.dd-breadcrumb   { display: flex !important; align-items: center !important; gap: 5px !important; font-size: 11px !important; color: #94A3B8 !important; margin-bottom: 3px !important; }
-.dd-breadcrumb a { color: #059669 !important; text-decoration: none !important; font-weight: 600 !important; }
-.dd-title        { font-size: 26px !important; font-weight: 900 !important; letter-spacing: -.03em !important; color: #0f172a !important; margin: 0 0 3px !important; line-height: 1 !important; }
-.dd-sub          { font-size: 13px !important; color: #64748b !important; margin: 0 !important; }
-.dd-header-img   { height: 100px !important; opacity: .85 !important; }
-
-/* ══════ BODY ══════ */
-.dd-body { padding: 0 28px !important; }
-
-/* ══════ TABS ══════ */
-.dd-tabs-lbl { font-size: 10px !important; font-weight: 700 !important; letter-spacing: .14em !important; text-transform: uppercase !important; color: #94A3B8 !important; margin-bottom: 10px !important; display: block !important; }
-.dd-tabs {
-  display: flex !important; background: #ffffff !important;
-  border: 1px solid #E2E8F0 !important; border-radius: 14px !important;
-  padding: 5px !important; gap: 4px !important; margin-bottom: 24px !important;
-  flex-wrap: wrap !important; box-shadow: 0 1px 4px rgba(0,0,0,.04) !important;
-}
-.dd-tab {
-  flex: 1 !important; min-width: 120px !important;
-  display: flex !important; align-items: center !important; justify-content: center !important; gap: 8px !important;
-  padding: 10px 14px !important; border-radius: 10px !important;
-  border: 1.5px solid transparent !important; background: transparent !important;
-  cursor: pointer !important; font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important;
-  transition: all .15s !important; color: #64748b !important;
-}
-.dd-tab:hover { background: #F8FAFC !important; color: #0f172a !important; }
-.dd-tab-icon {
-  width: 28px !important; height: 28px !important; border-radius: 8px !important;
-  display: flex !important; align-items: center !important; justify-content: center !important;
-  flex-shrink: 0 !important; transition: all .15s !important;
-}
-.dd-tab-icon svg { stroke: currentColor !important; }
-.dd-tab-name { font-size: 13px !important; font-weight: 700 !important; }
-
-/* ══════ PANEL ══════ */
-.dd-panel {
-  background: #ffffff !important; border: 1px solid #E2E8F0 !important;
-  border-radius: 16px !important; overflow: hidden !important;
-  box-shadow: 0 1px 6px rgba(0,0,0,.05) !important;
-}
-.dd-panel-hd {
-  display: flex !important; align-items: center !important; gap: 14px !important;
-  padding: 18px 22px !important; border-bottom: 1px solid #F1F5F9 !important;
-  background: #FAFBFF !important; border-left: 4px solid #059669 !important;
-}
-.dd-ph-num {
-  width: 32px !important; height: 32px !important; border-radius: 9px !important;
-  color: #fff !important; display: flex !important; align-items: center !important;
-  justify-content: center !important; font-size: 13px !important; font-weight: 900 !important; flex-shrink: 0 !important;
-}
-.dd-ph-title { font-size: 16px !important; font-weight: 800 !important; color: #0f172a !important; margin: 0 0 2px !important; display: block !important; }
-.dd-ph-sub   { font-size: 12px !important; color: #64748b !important; margin: 0 !important; }
-
-/* ══════ FILTROS ══════ */
-.dd-filters {
-  padding: 18px 22px 14px !important;
-  display: flex !important; flex-direction: column !important; gap: 14px !important;
-  border-bottom: 1px solid #F1F5F9 !important;
-}
-.dd-fg    { display: flex !important; flex-direction: column !important; gap: 8px !important; }
-.dd-flbl  { font-size: 10px !important; font-weight: 700 !important; letter-spacing: .1em !important; text-transform: uppercase !important; color: #94A3B8 !important; }
-.dd-chip-row { display: flex !important; gap: 5px !important; flex-wrap: wrap !important; }
-.dd-chip {
-  padding: 5px 12px !important; border-radius: 20px !important;
-  border: 1.5px solid #E2E8F0 !important; background: #F8FAFC !important;
-  color: #64748b !important; font-size: 12px !important; font-weight: 700 !important;
-  cursor: pointer !important; transition: all .13s !important;
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important;
-}
-.dd-chip:hover    { border-color: #94A3B8 !important; color: #0f172a !important; }
-.dd-chip-year     { min-width: 56px !important; text-align: center !important; }
-.dd-chip-indigo   { background: #4F46E5 !important; border-color: #4F46E5 !important; color: #ffffff !important; }
-.dd-chip-green    { background: #059669 !important; border-color: #059669 !important; color: #ffffff !important; }
-
-/* ══════ TABELA ══════ */
-.dd-tbl-scroll { overflow-x: auto !important; }
-.dd-table { width: 100% !important; border-collapse: collapse !important; font-size: 13px !important; font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important; background: #fff !important; }
-.dd-thead-indigo th { background: #4F46E5 !important; color: #ffffff !important; }
-.dd-thead-green  th { background: #059669 !important; color: #ffffff !important; }
-.dd-thead-amber  th { background: #D97706 !important; color: #ffffff !important; }
-.dd-th  { font-size: 10px !important; font-weight: 700 !important; letter-spacing: .07em !important; text-transform: uppercase !important; padding: 11px 14px !important; text-align: left !important; white-space: nowrap !important; border: none !important; }
-.dd-tr:hover td { background: #F0FDF9 !important; }
-.dd-tr-alt td   { background: #FAFBFF !important; }
-.dd-td   { padding: 9px 14px !important; border-bottom: 1px solid #F1F5F9 !important; color: #0f172a !important; vertical-align: middle !important; }
-.dd-mono { font-family: 'DM Mono', monospace !important; font-size: 11px !important; color: #64748b !important; }
-
-/* Input inline */
-.dd-input {
-  width: 100% !important; min-width: 130px !important;
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important;
-  font-size: 13px !important; font-weight: 600 !important; color: #0f172a !important;
-  background: #F8FAFC !important; border: 1.5px solid #E2E8F0 !important;
-  border-radius: 9px !important; padding: 7px 12px !important;
-  outline: none !important; transition: border-color .14s, box-shadow .14s !important;
-}
-.dd-input:focus { border-color: #059669 !important; background: #fff !important; box-shadow: 0 0 0 3px rgba(5,150,105,.1) !important; }
-.dd-input::placeholder { color: #CBD5E1 !important; }
-/* Remove arrows from number inputs */
-.dd-input::-webkit-inner-spin-button,
-.dd-input::-webkit-outer-spin-button { -webkit-appearance: none !important; }
-
-/* ══════ AÇÃO ENVIAR ══════ */
-.dd-panel-actions { padding: 16px 22px !important; border-top: 1px solid #F1F5F9 !important; display: flex !important; }
-.dd-btn-send {
-  display: flex !important; align-items: center !important; gap: 8px !important;
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important;
-  font-size: 13px !important; font-weight: 800 !important; color: #fff !important;
-  border: none !important; border-radius: 11px !important; padding: 11px 24px !important;
-  cursor: pointer !important; transition: all .15s !important;
-}
-.dd-btn-send:disabled { opacity: .55 !important; cursor: not-allowed !important; }
-.dd-btn-send svg { stroke: #fff !important; }
-.dd-btn-indigo { background: #4F46E5 !important; box-shadow: 0 3px 12px rgba(79,70,229,.3) !important; }
-.dd-btn-indigo:hover:not(:disabled) { background: #4338CA !important; transform: translateY(-1px) !important; }
-.dd-btn-green  { background: #059669 !important; box-shadow: 0 3px 12px rgba(5,150,105,.3) !important; }
-.dd-btn-green:hover:not(:disabled)  { background: #047857 !important; transform: translateY(-1px) !important; }
-.dd-spinner {
-  width: 14px !important; height: 14px !important; border-radius: 50% !important;
-  border: 2px solid rgba(255,255,255,.3) !important; border-top-color: #fff !important;
-  animation: ddSpin .7s linear infinite !important; flex-shrink: 0 !important;
-}
-@keyframes ddSpin { to { transform: rotate(360deg); } }
-
-/* ══════ CHECKBOX customizado ══════ */
-.dd-check-btn {
-  width: 28px !important; height: 28px !important; border-radius: 7px !important;
-  border: 1.5px solid #E2E8F0 !important; background: #F8FAFC !important;
-  cursor: pointer !important; display: flex !important; align-items: center !important;
-  justify-content: center !important; transition: all .13s !important; color: transparent !important;
-  margin: 0 auto !important;
-}
-.dd-check-btn:hover { border-color: #059669 !important; background: #ECFDF5 !important; color: #059669 !important; }
-.dd-check-on { background: #059669 !important; border-color: #059669 !important; color: #ffffff !important; }
-.dd-check-btn svg { stroke: currentColor !important; }
-
-/* ══════ PILLS ══════ */
-.dd-pill-green {
-  display: inline-flex !important; align-items: center !important; gap: 5px !important;
-  background: #ECFDF5 !important; color: #047857 !important; border: 1px solid #A7F3D0 !important;
-  font-size: 11px !important; font-weight: 700 !important; padding: 3px 10px !important; border-radius: 20px !important;
-}
-.dd-pill-slate {
-  display: inline-flex !important; background: #F8FAFC !important; color: #94A3B8 !important;
-  border: 1px solid #E2E8F0 !important; font-size: 11px !important; font-weight: 600 !important;
-  padding: 3px 10px !important; border-radius: 20px !important;
-}
-.dd-pill-dot { width: 6px !important; height: 6px !important; border-radius: 50% !important; background: #059669 !important; }
-
-/* ══════ EMPTY STATE ══════ */
-.dd-empty-state {
-  display: flex !important; flex-direction: column !important;
-  align-items: center !important; justify-content: center !important;
-  gap: 10px !important; padding: 52px 24px !important;
-}
-.dd-empty-icon {
-  width: 56px !important; height: 56px !important; border-radius: 14px !important;
-  background: #F5F3FF !important; display: flex !important;
-  align-items: center !important; justify-content: center !important;
-}
-.dd-empty-title { font-size: 15px !important; font-weight: 800 !important; color: #475569 !important; margin: 0 !important; }
-.dd-empty-sub   { font-size: 12px !important; color: #94A3B8 !important; margin: 0 !important; }
-
-/* ══════ SNACKBAR ══════ */
-.dd-snackbar {
-  position: fixed !important; bottom: 24px !important; left: 50% !important;
-  transform: translateX(-50%) !important;
-  background: #059669 !important; color: #fff !important;
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important;
-  font-size: 13px !important; font-weight: 700 !important;
-  padding: 11px 20px !important; border-radius: 20px !important;
-  box-shadow: 0 8px 28px rgba(5,150,105,.4) !important;
-  display: flex !important; align-items: center !important; gap: 10px !important;
-  cursor: pointer !important; z-index: 9999 !important; white-space: nowrap !important;
-}
-.dd-snack-icon {
-  width: 22px !important; height: 22px !important; border-radius: 50% !important;
-  background: rgba(255,255,255,.2) !important;
-  display: flex !important; align-items: center !important; justify-content: center !important; flex-shrink: 0 !important;
-}
-.dd-snack-icon svg { stroke: #fff !important; }
-.dd-snack-enter-active { transition: all .22s ease !important; }
-.dd-snack-leave-active { transition: all .16s ease !important; }
-.dd-snack-enter-from, .dd-snack-leave-to { opacity: 0 !important; transform: translateX(-50%) translateY(12px) !important; }
-
-/* ══════ TRANSIÇÃO DE PAINEL ══════ */
-.dd-fade-enter-active { transition: all .2s ease !important; }
-.dd-fade-leave-active { transition: all .14s ease !important; }
-.dd-fade-enter-from, .dd-fade-leave-to { opacity: 0 !important; transform: translateY(6px) !important; }
-
-/* ══════ RESPONSIVO ══════ */
-@media (max-width: 640px) {
-  .dd-header     { padding: 16px 20px !important; flex-direction: column !important; align-items: flex-start !important; gap: 12px !important; }
-  .dd-header-img { display: none !important; }
-  .dd-title      { font-size: 22px !important; }
-  .dd-body       { padding: 0 16px !important; }
-  .dd-tab        { min-width: 90px !important; padding: 8px 10px !important; }
-}
-
-/* ════════════════════════════════════════
-   SEMANAL — INTERFACE
-════════════════════════════════════════ */
-.dd-btn-violet {
-  background: #7C3AED !important;
-  box-shadow: 0 3px 12px rgba(124,58,237,.3) !important;
-}
-.dd-btn-violet:hover:not(:disabled) {
-  background: #6D28D9 !important;
-  transform: translateY(-1px) !important;
-}
-
-.dd-sem-periodo {
-  display: flex !important; align-items: flex-end !important;
-  gap: 12px !important; flex-wrap: wrap !important;
-}
-.dd-sem-arrow {
-  padding-bottom: 10px !important;
-  display: flex !important; align-items: center !important;
-}
-.dd-date-input {
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important;
-  font-size: 13px !important; font-weight: 600 !important; color: #0f172a !important;
-  background: #F8FAFC !important; border: 1.5px solid #E2E8F0 !important;
-  border-radius: 10px !important; padding: 9px 14px !important;
-  outline: none !important; transition: border-color .14s, box-shadow .14s !important;
-  cursor: pointer !important;
-}
-.dd-date-input:focus {
-  border-color: #7C3AED !important;
-  box-shadow: 0 0 0 3px rgba(124,58,237,.1) !important;
-  background: #fff !important;
-}
-.dd-sem-badge {
-  display: flex !important; align-items: center !important; gap: 6px !important;
-  background: #F5F3FF !important; border: 1px solid #DDD6FE !important;
-  border-radius: 20px !important; padding: 7px 14px !important;
-  font-size: 12px !important; font-weight: 700 !important; color: #7C3AED !important;
-  margin-bottom: 2px !important;
-}
-.dd-sem-badge svg { stroke: #7C3AED !important; flex-shrink: 0 !important; }
-.dd-sem-hint {
-  display: flex !important; align-items: center !important; gap: 6px !important;
-  font-size: 12px !important; color: #64748b !important; margin: 0 !important;
-}
-.dd-sem-hint code {
-  background: #F5F3FF !important; color: #7C3AED !important;
-  padding: 2px 6px !important; border-radius: 5px !important;
-  font-size: 12px !important; font-weight: 700 !important;
-}
-
-/* Tabela excel */
-.dd-tbl-excel .dd-td { padding: 2px 10px !important; }
-.dd-thead-violet th  { background: #7C3AED !important; color: #ffffff !important; }
-.dd-th-uc     { width: 120px !important; }
-.dd-th-expr   { min-width: 260px !important; }
-.dd-th-result { width: 160px !important; text-align: right !important; }
-
-/* Input tipo célula excel */
-.dd-td-excel { padding: 3px 6px !important; }
-.dd-excel-input {
-  width: 100% !important;
-  font-family: 'DM Mono', monospace !important;
-  font-size: 13px !important; font-weight: 500 !important; color: #0f172a !important;
-  background: transparent !important; border: 1.5px solid transparent !important;
-  border-radius: 6px !important; padding: 6px 10px !important;
-  outline: none !important; transition: all .13s !important;
-}
-.dd-excel-input:hover {
-  background: #F8FAFC !important; border-color: #E2E8F0 !important;
-}
-.dd-excel-input:focus {
-  background: #fff !important; border-color: #7C3AED !important;
-  box-shadow: 0 0 0 3px rgba(124,58,237,.12) !important;
-}
-.dd-excel-input-err { border-color: #FECDD3 !important; background: #FFF1F2 !important; }
-.dd-excel-input::placeholder { color: #CBD5E1 !important; font-style: italic !important; }
-
-.dd-tr-erro td { background: #FFF1F2 !important; }
-
-/* Resultado */
-.dd-td-result { text-align: right !important; padding: 3px 14px !important; }
-.dd-result-val  { font-family: 'DM Mono', monospace !important; font-size: 14px !important; font-weight: 700 !important; color: #059669 !important; }
-.dd-result-zero { color: #CBD5E1 !important; font-size: 13px !important; }
-.dd-result-err  { color: #E11D48 !important; font-size: 11px !important; font-weight: 700 !important; background: #FFF1F2 !important; padding: 2px 8px !important; border-radius: 20px !important; }
-
-/* Rodapé da tabela */
-.dd-tfoot-row td { background: #F5F3FF !important; border-top: 2px solid #DDD6FE !important; }
-.dd-tfoot-lbl {
-  padding: 11px 14px !important; font-size: 12px !important; font-weight: 800 !important;
-  color: #7C3AED !important; display: flex !important; align-items: center !important; gap: 6px !important;
-}
-.dd-tfoot-lbl svg { stroke: #7C3AED !important; }
-.dd-tfoot-val {
-  padding: 11px 14px !important; text-align: right !important;
-  font-family: 'DM Mono', monospace !important; font-size: 15px !important;
-  font-weight: 900 !important; color: #7C3AED !important;
-}
+.sem-pdf-doc { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; color: #0f172a; }
+.sem-pdf-doc p, .sem-pdf-doc h1, .sem-pdf-doc h2 { margin: 0; }
 
 /* ════════════════════════════════════════
    SEMANAL — DOCUMENTO PDF

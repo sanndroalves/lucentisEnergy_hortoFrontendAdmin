@@ -1,261 +1,86 @@
 <script setup lang="ts">
 useHead({ title: 'Login • Lucentis' });
-definePageMeta({ layout: "blank" });
+definePageMeta({ layout: 'blank' });
 </script>
 
 <template>
-  <div class="login-root">
-
-    <!-- Mesh gradient background -->
-    <div class="login-bg" aria-hidden="true">
-      <div class="login-blob login-blob-1"></div>
-      <div class="login-blob login-blob-2"></div>
-      <div class="login-blob login-blob-3"></div>
-    </div>
-
-    <div class="login-shell">
-
-      <!-- Lado esquerdo — branding -->
-      <div class="login-left">
-        <div class="login-left-inner">
-
-          <!-- Logo + nome -->
-          <div class="login-brand">
-            <img src="https://i.imgur.com/gHxwN0V.png" class="login-brand-logo" alt="Lucentis" />
-          </div>
-
-          <h1 class="login-left-title">
-            Sistema de<br>
-            <span class="login-left-title-green">Monitoramento</span><br>
-            Energético
-          </h1>
-          <p class="login-left-sub">
-            Plataforma oficial de gestão ENERGÉTICA municipal de Hortolândia · SP
-          </p>
-
-          <!-- Stats decorativos -->
-          <!-- <div class="login-stats">
-            <div class="login-stat">
-              <span class="login-stat-val">17</span>
-              <span class="login-stat-lbl">Usinas</span>
-            </div>
-            <div class="login-stat-div"></div>
-            <div class="login-stat">
-              <span class="login-stat-val">172</span>
-              <span class="login-stat-lbl">Unidades</span>
-            </div>
-            <div class="login-stat-div"></div>
-            <div class="login-stat">
-              <span class="login-stat-val">1.2 MW</span>
-              <span class="login-stat-lbl">Capacidade</span>
-            </div>
-          </div> -->
-
-          <!-- Rodapé esquerdo -->
-          <p class="login-left-footer">hortolandia.energy.lucentis.com.br</p>
+  <div class="lx-page lg">
+    <div class="lg-shell">
+      <!-- Marca -->
+      <section class="lg-marca">
+        <div class="lg-orb">
+          <LxNebulosa class="lg-neb" :particulas="60" :velocidade="0.6" />
+          <img src="https://i.imgur.com/qZ92wWu.png" alt="LUCENTIS" class="lg-logo">
         </div>
-      </div>
-
-      <!-- Lado direito — formulário -->
-      <div class="login-right">
-        <div class="login-card">
-
-          <!-- Cabeçalho do card -->
-          <div class="login-card-header">
-            <div class="login-card-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round">
-                <path d="M12 22s8-4.5 8-11.8A8 8 0 004 10.2C4 17.5 12 22 12 22z"/>
-                <circle cx="12" cy="10" r="3"/>
-              </svg>
-            </div>
-            <div>
-              <p class="login-card-eyebrow">Área Restrita</p>
-              <h2 class="login-card-title">Acesso ao Sistema</h2>
-            </div>
-          </div>
-
-          <div class="login-card-divider"></div>
-
-          <!-- Formulário -->
-          <AuthLoginForm />
-
-          <!-- Rodapé do card -->
-          <p class="login-card-footer">
-            Desenvolvido por <strong>Lucentis</strong> · Sistema ENERGY
-          </p>
+        <div class="lg-tx">
+          <span class="lg-eyebrow"><i></i>Hortolândia · SP</span>
+          <h1>Sistema de monitoramento <span class="grad">energético</span></h1>
+          <p>Plataforma oficial de gestão da energia solar e do consumo das unidades públicas do município.</p>
         </div>
-      </div>
+      </section>
 
+      <!-- Formulário -->
+      <section class="lg-card" aria-labelledby="lg-tt">
+        <header class="lg-card-hd">
+          <span class="lg-card-ic">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          </span>
+          <div>
+            <small>Área restrita</small>
+            <h2 id="lg-tt">Acesso ao sistema</h2>
+          </div>
+        </header>
+        <AuthLoginForm />
+        <p class="lg-card-ft">Desenvolvido por <b>Lucentis</b> · hortolandia.energy.lucentis.com.br</p>
+      </section>
     </div>
   </div>
 </template>
 
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
+<style scoped>
+.lg {
+  min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 32px 20px; background-color: var(--bg);
+  background-image:
+    radial-gradient(circle at 15% 10%, rgba(34, 197, 224, .16), transparent 40%),
+    radial-gradient(circle at 90% 90%, rgba(168, 85, 247, .18), transparent 45%),
+    linear-gradient(rgba(255, 255, 255, .025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, .025) 1px, transparent 1px);
+  background-size: auto, auto, 44px 44px, 44px 44px;
+}
+.lg-shell { width: min(1100px, 100%); display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 420px); gap: 56px; align-items: center; }
+.lg-shell > * { min-width: 0; }
 
-/* ══════ ROOT ══════ */
-.login-root {
-  min-height: 100vh !important;
-  background: #F0FDF9 !important;
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important;
-  position: relative !important;
-  overflow: hidden !important;
-  display: flex !important;
-  align-items: stretch !important;
-}
+/* ── Marca ── */
+.lg-marca { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 22px; }
+.lg-orb { position: relative; width: min(440px, 80vw); aspect-ratio: 1; display: grid; place-items: center; isolation: isolate; }
+.lg-neb { position: absolute; inset: 0; z-index: -1; opacity: .55; -webkit-mask-image: radial-gradient(circle, #000 35%, transparent 68%); mask-image: radial-gradient(circle, #000 35%, transparent 68%); }
+.lg-logo { width: 62%; filter: drop-shadow(0 2px 10px rgba(3, 6, 15, .85)); }
+.lg-tx { max-width: 460px; display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: -40px; }
+.lg-eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--mut); }
+.lg-eyebrow i { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); }
+.lg-tx h1 { font-size: clamp(24px, 2.8vw, 34px); font-weight: 700; letter-spacing: -.02em; line-height: 1.15; }
+.lg-tx .grad { background: linear-gradient(90deg, var(--teal), var(--purple)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.lg-tx p { font-size: 13.5px; color: var(--mut); line-height: 1.6; }
 
-/* ══════ BACKGROUND BLOBS ══════ */
-.login-bg {
-  position: fixed !important; inset: 0 !important;
-  pointer-events: none !important; z-index: 0 !important;
-  overflow: hidden !important;
+/* ── Card ── */
+.lg-card {
+  position: relative; overflow: hidden; padding: 28px; border-radius: 26px;
+  background: rgba(13, 19, 48, .78); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  border: 1px solid var(--line); box-shadow: 0 30px 80px -24px rgba(0, 0, 0, .8), 0 0 60px -28px var(--teal);
 }
-.login-blob {
-  position: absolute !important; border-radius: 50% !important; filter: blur(80px) !important;
-}
-.login-blob-1 {
-  width: 500px !important; height: 500px !important;
-  top: -100px !important; left: -100px !important;
-  background: radial-gradient(circle, rgba(5,150,105,.2) 0%, transparent 70%) !important;
-  animation: blobFloat 14s ease-in-out infinite !important;
-}
-.login-blob-2 {
-  width: 400px !important; height: 400px !important;
-  bottom: -80px !important; right: 30% !important;
-  background: radial-gradient(circle, rgba(79,70,229,.15) 0%, transparent 70%) !important;
-  animation: blobFloat 18s ease-in-out infinite reverse !important;
-}
-.login-blob-3 {
-  width: 300px !important; height: 300px !important;
-  top: 40% !important; right: -60px !important;
-  background: radial-gradient(circle, rgba(217,119,6,.12) 0%, transparent 70%) !important;
-  animation: blobFloat 22s ease-in-out infinite 4s !important;
-}
-@keyframes blobFloat {
-  0%,100% { transform: translate(0,0) scale(1); }
-  33%      { transform: translate(20px,-30px) scale(1.04); }
-  66%      { transform: translate(-15px,15px) scale(0.97); }
-}
+.lg-card::before { content: ""; position: absolute; left: 24px; right: 24px; top: 0; height: 2px; border-radius: 2px; background: linear-gradient(90deg, var(--teal), var(--purple)); box-shadow: 0 0 14px var(--teal); }
+.lg-card-hd { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; }
+.lg-card-ic { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, var(--teal), var(--purple)); box-shadow: 0 10px 26px -10px var(--teal); flex: none; }
+.lg-card-hd small { display: block; font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--mut); }
+.lg-card-hd h2 { font-size: 21px; font-weight: 700; letter-spacing: -.01em; }
+.lg-card-ft { margin-top: 22px; text-align: center; font-size: 11.5px; color: var(--mut); overflow-wrap: anywhere; }
+.lg-card-ft b { color: var(--teal); font-weight: 600; }
 
-/* ══════ SHELL ══════ */
-.login-shell {
-  position: relative !important; z-index: 1 !important;
-  display: flex !important; width: 100% !important; min-height: 100vh !important;
-}
-
-/* ══════ LEFT — BRANDING ══════ */
-.login-left {
-  flex: 1 !important;
-  background: linear-gradient(160deg, #0c1420 0%, #0f2518 50%, #0a1833 100%) !important;
-  display: flex !important; align-items: center !important; justify-content: center !important;
-  padding: 48px !important;
-  position: relative !important; overflow: hidden !important;
-}
-/* decoração de grade pontilhada */
-.login-left::before {
-  content: '' !important; position: absolute !important; inset: 0 !important;
-  background-image: radial-gradient(rgba(255,255,255,.06) 1px, transparent 1px) !important;
-  background-size: 28px 28px !important;
-  pointer-events: none !important;
-}
-.login-left-inner {
-  position: relative !important; max-width: 440px !important;
-  display: flex !important; flex-direction: column !important; gap: 28px !important;
-}
-.login-brand { display: flex !important; align-items: center !important; gap: 14px !important; }
-.login-brand-logo {
-  height: 52px !important; object-fit: contain !important;
-  filter: brightness(0) invert(1) !important; opacity: .9 !important;
-}
-.login-left-title {
-  font-size: clamp(28px, 4vw, 42px) !important; font-weight: 900 !important;
-  color: #ffffff !important; letter-spacing: -.03em !important; line-height: 1.1 !important;
-  margin: 0 !important;
-}
-.login-left-title-green {
-  background: linear-gradient(135deg, #34D399, #059669) !important;
-  -webkit-background-clip: text !important; -webkit-text-fill-color: transparent !important;
-  background-clip: text !important;
-}
-.login-left-sub {
-  font-size: 14px !important; color: rgba(255,255,255,.45) !important;
-  line-height: 1.6 !important; margin: 0 !important; max-width: 360px !important;
-}
-
-/* stats decorativos */
-.login-stats {
-  display: flex !important; align-items: center !important; gap: 0 !important;
-  background: rgba(255,255,255,.06) !important;
-  border: 1px solid rgba(255,255,255,.1) !important;
-  border-radius: 14px !important; width: fit-content !important;
-}
-.login-stat {
-  padding: 14px 24px !important;
-  display: flex !important; flex-direction: column !important; gap: 3px !important;
-}
-.login-stat-val {
-  font-size: 20px !important; font-weight: 900 !important;
-  color: #34D399 !important; letter-spacing: -.02em !important; line-height: 1 !important;
-}
-.login-stat-lbl {
-  font-size: 10px !important; font-weight: 600 !important;
-  color: rgba(255,255,255,.4) !important; text-transform: uppercase !important; letter-spacing: .08em !important;
-}
-.login-stat-div {
-  width: 1px !important; height: 36px !important;
-  background: rgba(255,255,255,.12) !important; align-self: center !important;
-}
-.login-left-footer {
-  font-size: 11px !important; color: rgba(255,255,255,.2) !important;
-  margin: 0 !important; letter-spacing: .04em !important;
-}
-
-/* ══════ RIGHT — FORM ══════ */
-.login-right {
-  width: 480px !important; flex-shrink: 0 !important;
-  display: flex !important; align-items: center !important; justify-content: center !important;
-  padding: 40px 48px !important;
-  background: #ffffff !important;
-}
-.login-card {
-  width: 100% !important; max-width: 380px !important;
-}
-
-/* Header do card */
-.login-card-header {
-  display: flex !important; align-items: center !important; gap: 14px !important;
-  margin-bottom: 20px !important;
-}
-.login-card-icon {
-  width: 48px !important; height: 48px !important; border-radius: 13px !important;
-  background: #059669 !important;
-  display: flex !important; align-items: center !important; justify-content: center !important;
-  box-shadow: 0 4px 14px rgba(5,150,105,.3) !important; flex-shrink: 0 !important;
-}
-.login-card-eyebrow {
-  font-size: 10px !important; font-weight: 700 !important;
-  letter-spacing: .12em !important; text-transform: uppercase !important;
-  color: #94A3B8 !important; margin: 0 0 2px !important;
-}
-.login-card-title {
-  font-size: 20px !important; font-weight: 900 !important;
-  color: #0f172a !important; letter-spacing: -.02em !important; margin: 0 !important;
-}
-.login-card-divider {
-  height: 1.5px !important; border-radius: 2px !important;
-  background: linear-gradient(90deg, #059669, #4F46E5 60%, transparent) !important;
-  opacity: .3 !important; margin-bottom: 28px !important;
-}
-.login-card-footer {
-  text-align: center !important; font-size: 11px !important;
-  color: #94A3B8 !important; margin-top: 20px !important;
-}
-.login-card-footer strong { color: #059669 !important; font-weight: 700 !important; }
-
-/* ══════ MOBILE ══════ */
-@media (max-width: 768px) {
-  .login-shell { flex-direction: column !important; }
-  .login-left { display: none !important; }
-  .login-right { width: 100% !important; min-height: 100vh !important; padding: 32px 24px !important; }
+@media (max-width: 900px) {
+  .lg-shell { grid-template-columns: minmax(0, 1fr); gap: 8px; max-width: 440px; }
+  .lg-card { padding: 22px 18px; }
+  .lg-orb { width: min(280px, 70vw); }
+  .lg-tx { margin-top: -30px; }
+  .lg-tx p { display: none; }
 }
 </style>

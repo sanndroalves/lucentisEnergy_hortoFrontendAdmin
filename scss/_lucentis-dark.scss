@@ -280,6 +280,51 @@ select.lx-input { appearance: none; cursor: pointer;
   b { font-weight: 600; text-align: right; min-width: 0; overflow-wrap: anywhere; }
 }
 
+// ── Filtros de relatório ──
+.lx-filtros { display: flex; align-items: flex-end; gap: 16px 20px; flex-wrap: wrap; }
+.lx-filtros > .lx-field { flex: 0 1 auto; }
+.lx-filtros > .grow { flex: 1 1 260px; }
+.lx-filtros > .lx-btn { margin-left: auto; }
+
+// ── Carregamento ──
+.lx-spin {
+  width: 15px; height: 15px; border-radius: 50%; flex: none; display: inline-block;
+  border: 2px solid rgba(255, 255, 255, .3); border-top-color: currentColor; animation: lxSpin .8s linear infinite;
+}
+@keyframes lxSpin { to { transform: rotate(1turn); } }
+.lx-loading {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 40px 16px;
+  color: var(--mut); font-size: 12.5px; text-align: center;
+  .lx-spin { width: 30px; height: 30px; border-width: 3px; border-color: var(--line); border-top-color: var(--c, var(--teal)); }
+  b { color: var(--tx); font-size: 14px; font-weight: 600; }
+}
+.lx-skel {
+  border-radius: 14px; background: linear-gradient(90deg, rgba(255, 255, 255, .035), rgba(255, 255, 255, .09), rgba(255, 255, 255, .035));
+  background-size: 200% 100%; animation: lxSkel 1.3s ease-in-out infinite;
+}
+@keyframes lxSkel { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+.lx-fade-enter-active { transition: opacity .35s ease, transform .35s ease; }
+.lx-fade-enter-from { opacity: 0; transform: translateY(10px); }
+
+// ── Navegação de mês ( ‹ JANEIRO 2025 › ) ──
+.lx-mnav { display: inline-flex; align-items: center; gap: 8px;
+  > span { min-width: 150px; text-align: center; font-weight: 600; font-size: 13px; letter-spacing: .02em; }
+}
+
+// ── Exportação em PDF (exportarPDF em composables/useRelatorios.ts): tema claro
+// aplicado só no clone que o html2canvas desenha; a tela não muda.
+.lx-pdf {
+  --bg: #ffffff; --bg2: #ffffff; --card: #ffffff; --card2: #f8fafc;
+  --line: #dbe2ea; --line2: #e9eef4; --tx: #0f172a; --mut: #5b6b82;
+  --teal: #0891b2; --green: #059669; --orange: #d97706; --purple: #7c3aed; --red: #e11d48;
+  --font: 'Sora', system-ui, -apple-system, 'Segoe UI', sans-serif; --mono: 'JetBrains Mono', ui-monospace, monospace;
+  background: #fff !important; color: var(--tx); font-family: var(--font); padding: 18px;
+  .lx-panel, .lx-kpi { backdrop-filter: none; box-shadow: none; }
+  .no-pdf { display: none !important; }
+  // o clone reinicia as animações: sem isso barras e cards sairiam no quadro inicial (vazios)
+  &, * , *::before, *::after { animation: none !important; transition: none !important; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .lx-page *, .lx-dlg *, .lx-shell * { animation: none !important; transition: none !important; }
 }

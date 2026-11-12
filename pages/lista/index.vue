@@ -262,13 +262,21 @@
   };
 
   // ── onMounted ─────────────────────────────────────────────────
+  // ── estado da tela ────────────────────────────────────────────
+  const carregandoDados = ref(true);   // parâmetros ainda sendo buscados/calculados
+  const dlgParametros   = ref(false);  // dialog "Verificar parâmetros"
+
   onMounted(async () => {
-    await fetchData();
-    buscarConsumoMedioUsinas();
-    await calcularProjecaoTotalUsinas();
-    calcularValoresFinais();
-    await calcularMediaConsumo();
-    somarMediaConsumoGrupos();
+    try {
+      await fetchData();
+      buscarConsumoMedioUsinas();
+      await calcularProjecaoTotalUsinas();
+      calcularValoresFinais();
+      await calcularMediaConsumo();
+      somarMediaConsumoGrupos();
+    } finally {
+      carregandoDados.value = false;
+    }
   });
 
   // ── helpers de formatação ─────────────────────────────────────
@@ -276,644 +284,254 @@
 </script>
 
 <template>
-  <div class="lr-root">
-
-    <!-- ══════════════════════════════════════
-         HEADER
-    ══════════════════════════════════════ -->
-    <div class="lr-header">
-      <div class="lr-header-left">
-        <div class="lr-header-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round">
-            <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
-            <line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/>
-            <line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
-          </svg>
-        </div>
-        <div>
-          <nav class="lr-breadcrumb">
-            <a href="/">Início</a><span>›</span>
-            <a href="/">Gerenciamento</a><span>›</span>
-            <span>Lista de Rateio</span>
-          </nav>
-          <h1 class="lr-title">Lista de Rateio</h1>
-          <p class="lr-sub">Configuração e cálculo do rateio de energia compensada · {{ anoAtual }}</p>
-        </div>
+  <div class="lx-page">
+    <!-- Cabeçalho -->
+    <header class="lx-head">
+      <div>
+        <nav class="lx-crumb" aria-label="Você está em">
+          <NuxtLink to="/">Início</NuxtLink><span class="sep">›</span><span>Gerenciamento</span><span class="sep">›</span><b>Lista de rateio</b>
+        </nav>
+        <h1 class="lx-title">Lista de <span class="grad">rateio</span></h1>
+        <p class="lx-sub">Cálculo do rateio da energia compensada · projeção {{ anoAtual }}</p>
       </div>
-      <img src="https://i.imgur.com/QYFVuX6.png" class="lr-header-img" alt="">
-    </div>
-
-    <!-- ══════════════════════════════════════
-         CARDS KPI TOPO
-    ══════════════════════════════════════ -->
-    <div class="lr-kpi-row">
-      <div class="lr-kpi lr-kpi-indigo">
-        <div class="lr-kpi-badge">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <path d="M13 10V3L4 14h7v7l9-11h-7z"/>
-          </svg>
-        </div>
-        <span class="lr-kpi-label">Prédios para Rateio</span>
-        <span class="lr-kpi-val">{{ prediosRateio.length }}</span>
-        <span class="lr-kpi-note">unidades ativas</span>
-        <div class="lr-kpi-bottom"></div>
-      </div>
-
-      <div class="lr-kpi lr-kpi-amber">
-        <div class="lr-kpi-badge">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/>
-            <line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
-            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-            <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
-          </svg>
-        </div>
-        <span class="lr-kpi-label">IP para Rateio</span>
-        <span class="lr-kpi-val">{{ iluminacaoRateio.length }}</span>
-        <span class="lr-kpi-note">iluminação pública</span>
-        <div class="lr-kpi-bottom"></div>
-      </div>
-
-      <div class="lr-kpi lr-kpi-green">
-        <div class="lr-kpi-badge">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-          </svg>
-        </div>
-        <span class="lr-kpi-label">Crédito p/ Injeção</span>
-        <span class="lr-kpi-val">{{ fmtNum(creditoParaInjecao) }}</span>
-        <span class="lr-kpi-note">kWh/mês · 17 usinas</span>
-        <div class="lr-kpi-bottom"></div>
-      </div>
-
-      <div class="lr-kpi lr-kpi-violet">
-        <div class="lr-kpi-badge">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
-          </svg>
-        </div>
-        <span class="lr-kpi-label">Crédito Jac1</span>
-        <span class="lr-kpi-val">{{ fmtNum(creditoParaInjecaoJac1) }}</span>
-        <span class="lr-kpi-note">kWh/mês · centro eventos</span>
-        <div class="lr-kpi-bottom"></div>
-      </div>
-    </div>
-
-    <!-- ══════════════════════════════════════
-         PAINÉIS DE DADOS
-    ══════════════════════════════════════ -->
-
-    <!-- Seção 1 — Consumo das Unidades -->
-    <div class="lr-section">
-      <div class="lr-section-header lr-sh-green">
-        <div class="lr-sh-num">01</div>
-        <div>
-          <h3 class="lr-sh-title">Consumo das Unidades</h3>
-          <p class="lr-sh-sub">Média mensal de consumo dos grupos Prédios e Iluminação Pública</p>
-        </div>
-      </div>
-      <div class="lr-data-grid lr-data-2">
-        <div class="lr-data-card lr-dc-indigo">
-          <span class="lr-dc-label">Consumo Prédios</span>
-          <span class="lr-dc-val">{{ fmtNum(somaPredios) }}</span>
-          <span class="lr-dc-unit">kWh / Mensal</span>
-        </div>
-        <div class="lr-data-card lr-dc-amber">
-          <span class="lr-dc-label">Consumo Iluminação</span>
-          <span class="lr-dc-val">{{ fmtNum(somaIluminacao) }}</span>
-          <span class="lr-dc-unit">kWh / Mensal</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Seção 2 — 17 Usinas + Paço Municipal -->
-    <div class="lr-section">
-      <div class="lr-section-header lr-sh-indigo">
-        <div class="lr-sh-num" style="background:#4F46E5">02</div>
-        <div>
-          <h3 class="lr-sh-title">17 Usinas + Paço Municipal</h3>
-          <p class="lr-sh-sub">Projeção anual, autoconsumo e créditos disponíveis para injeção</p>
-        </div>
-      </div>
-      <div class="lr-data-grid lr-data-4">
-        <div class="lr-data-card lr-dc-slate">
-          <span class="lr-dc-label">Consumo Usinas</span>
-          <span class="lr-dc-val">{{ fmtNum(consumoMedioUsinas) }}</span>
-          <span class="lr-dc-unit">kWh / Ano</span>
-        </div>
-        <div class="lr-data-card lr-dc-indigo">
-          <span class="lr-dc-label">Geração Usinas</span>
-          <span class="lr-dc-val">{{ fmtNum(totalProjetado) }}</span>
-          <span class="lr-dc-unit">kWh / Ano</span>
-        </div>
-        <div class="lr-data-card lr-dc-green">
-          <span class="lr-dc-label">Pós AutoConsumo</span>
-          <span class="lr-dc-val">{{ fmtNum(calculoPosAutoConsumo) }}</span>
-          <span class="lr-dc-unit">kWh / Ano</span>
-        </div>
-        <div class="lr-data-card lr-dc-violet">
-          <span class="lr-dc-label">Créditos p/ Injeção</span>
-          <span class="lr-dc-val">{{ fmtNum(creditoParaInjecao) }}</span>
-          <span class="lr-dc-unit">kWh / Mensal</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Seção 3 — JAC1 -->
-    <div class="lr-section">
-      <div class="lr-section-header lr-sh-amber">
-        <div class="lr-sh-num" style="background:#D97706">03</div>
-        <div>
-          <h3 class="lr-sh-title">Centro de Eventos JAC1</h3>
-          <p class="lr-sh-sub">Créditos da usina JAC1 divididos 50% Iluminação / 50% Prédios restantes</p>
-        </div>
-      </div>
-      <div class="lr-data-grid lr-data-3">
-        <div class="lr-data-card lr-dc-amber">
-          <span class="lr-dc-label">Geração Usina JAC1</span>
-          <span class="lr-dc-val">{{ fmtNum(totalProjetadoJac1) }}</span>
-          <span class="lr-dc-unit">kWh / Ano</span>
-        </div>
-        <div class="lr-data-card lr-dc-green">
-          <span class="lr-dc-label">Crédito Total Mensal</span>
-          <span class="lr-dc-val">{{ fmtNum(creditoParaInjecaoJac1) }}</span>
-          <span class="lr-dc-unit">kWh / Mensal</span>
-        </div>
-        <div class="lr-data-card lr-dc-slate">
-          <span class="lr-dc-label">50% por grupo</span>
-          <span class="lr-dc-val">{{ fmtNum(creditoParaInjecaoJac1 / 2) }}</span>
-          <span class="lr-dc-unit">kWh / Mensal</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- ══════════════════════════════════════
-         BOTÕES DE AÇÃO
-    ══════════════════════════════════════ -->
-    <div class="lr-actions">
-      <button v-if="mostrarBotaoCalcular" class="lr-btn-calc" @click="executarCalculoRateios">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-        </svg>
-        Calcular Rateios
-      </button>
-
-      <div v-if="mostrarBotaoDownload" class="lr-result-actions">
-        <div class="lr-result-badge">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-            <polyline points="20 6 9 17 4 12"/>
-          </svg>
-          Rateio calculado com sucesso
-        </div>
-        <button class="lr-btn-download" @click="baixarPlanilhas">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
-          Baixar Arquivos XLSX
-        </button>
-        <button class="lr-btn-recalc" @click="mostrarBotaoDownload=false; executarCalculoRateios()">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-            <polyline points="23 4 23 10 17 10"/>
-            <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
-          </svg>
-          Recalcular
+      <div class="lx-head-actions">
+        <button class="lx-btn-ghost" :disabled="carregandoDados" @click="dlgParametros = true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="11" y1="8" x2="11" y2="14"/></svg>
+          Verificar parâmetros
         </button>
       </div>
-    </div>
+    </header>
 
-    <!-- ══════════════════════════════════════
-         TABELAS DE RESULTADO
-    ══════════════════════════════════════ -->
-    <div v-if="mostrarBotaoDownload" class="lr-results">
+    <!-- Créditos + ação -->
+    <section class="rt-top">
+      <article class="rt-cred" style="--c:var(--teal);--c2:var(--green)">
+        <span class="rt-cred-ic">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        </span>
+        <span class="rt-cred-lb">Crédito para injeção</span>
+        <b v-if="!carregandoDados">{{ fmtNum(creditoParaInjecao) }}<small>kWh/mês</small></b>
+        <span v-else class="lx-skel rt-cred-skel"></span>
+        <small class="rt-cred-nt">17 usinas + Paço Municipal · após autoconsumo</small>
+      </article>
 
-      <!-- Prédios -->
-      <div class="lr-result-section">
-        <div class="lr-result-header lr-rh-indigo">
-          <div class="lr-rh-icon">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
-              <polyline points="9 22 9 12 15 12 15 22"/>
-            </svg>
+      <article class="rt-cred" style="--c:var(--purple);--c2:var(--orange)">
+        <span class="rt-cred-ic">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        </span>
+        <span class="rt-cred-lb">Crédito JAC1</span>
+        <b v-if="!carregandoDados">{{ fmtNum(creditoParaInjecaoJac1) }}<small>kWh/mês</small></b>
+        <span v-else class="lx-skel rt-cred-skel"></span>
+        <small class="rt-cred-nt">Centro de Eventos · 50% iluminação / 50% prédios restantes</small>
+      </article>
+
+      <article class="rt-acao" :class="{ ok: mostrarBotaoDownload }">
+        <template v-if="carregandoDados">
+          <div class="lx-loading rt-acao-load">
+            <span class="lx-spin"></span>
+            <b>Carregando parâmetros…</b>
+            <span>Usinas, projeções e consumo médio das unidades</span>
           </div>
-          <div>
-            <span class="lr-rh-title">Rateio — Prédios</span>
-            <span class="lr-rh-count">{{ unidadesRateioPredios.length }} unidades</span>
+        </template>
+        <template v-else-if="!mostrarBotaoDownload">
+          <span class="rt-acao-tt">Pronto para calcular</span>
+          <p>{{ prediosRateio.length }} prédios e {{ iluminacaoRateio.length }} pontos de iluminação ativos entram no cálculo.</p>
+          <button class="lx-btn rt-acao-btn" style="--c1:var(--teal);--c2:var(--purple)" :disabled="!mostrarBotaoCalcular" @click="executarCalculoRateios">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            Calcular rateios
+          </button>
+          <small v-if="!mostrarBotaoCalcular" class="rt-acao-aviso">Sem consumo médio dos prédios — verifique os parâmetros.</small>
+        </template>
+        <template v-else>
+          <span class="lx-pill" style="--c:var(--green)"><i></i>Rateio calculado</span>
+          <p>{{ unidadesRateioPredios.length + unidadesListaDeRateioJac1.length }} unidades contempladas nas duas listas.</p>
+          <div class="rt-acao-bts">
+            <button class="lx-btn" style="--c1:var(--green);--c2:var(--teal)" @click="baixarPlanilhas">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Baixar planilhas .xlsx
+            </button>
+            <button class="lx-btn-ghost" @click="mostrarBotaoDownload = false; executarCalculoRateios()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+              Recalcular
+            </button>
           </div>
-          <div class="lr-rh-total">
-            Total injetado: <strong>{{ fmtNum(unidadesRateioPredios.reduce((a,i)=>a+i.injetado,0)) }} kWh</strong>
+        </template>
+      </article>
+    </section>
+
+    <!-- Resultados -->
+    <Transition name="lx-fade">
+      <div v-if="mostrarBotaoDownload" class="lx-grid">
+        <!-- Prédios -->
+        <section class="lx-panel accent" style="--c:var(--teal)">
+          <div class="lx-panel-hd">
+            <div>
+              <h3><span class="lx-ic" style="--c:var(--teal)">⌂</span>Rateio · Prédios</h3>
+              <p>{{ unidadesRateioPredios.length }} unidades · crédito das 17 usinas + Paço</p>
+            </div>
+            <span class="lx-pill" style="--c:var(--teal)">Total injetado <b class="rt-num">{{ fmtNum(unidadesRateioPredios.reduce((a, i) => a + i.injetado, 0)) }} kWh</b></span>
           </div>
-        </div>
-        <div class="lr-tbl-wrap">
-          <table class="lr-table">
-            <thead class="lr-thead-indigo">
-              <tr>
-                <th class="lr-th">UC</th>
-                <th class="lr-th">Nome</th>
-                <th class="lr-th lr-th-r">Média kWh</th>
-                <th class="lr-th lr-th-r">Injetado kWh</th>
-                <th class="lr-th lr-th-r">%</th>
-                <th class="lr-th lr-th-r">Saldo Rest.</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(u, i) in unidadesRateioPredios" :key="u.uc" class="lr-tr" :class="{'lr-tr-alt': i%2===1}">
-                <td class="lr-td lr-mono">{{ u.uc }}</td>
-                <td class="lr-td lr-td-nome">{{ u.nome }}</td>
-                <td class="lr-td lr-td-r">{{ fmtNum(u.mediaConsumo) }}</td>
-                <td class="lr-td lr-td-r lr-td-green">{{ fmtNum(u.injetado) }}</td>
-                <td class="lr-td lr-td-r">
-                  <span class="lr-pct-pill">{{ u['%'] }}%</span>
-                </td>
-                <td class="lr-td lr-td-r lr-td-slate">{{ fmtNum(u.creditoRestante) }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+          <div class="lx-tbl-wrap">
+            <table class="lx-tbl rt-tbl">
+              <thead><tr><th>UC</th><th>Nome</th><th class="r">Média kWh</th><th class="r">Injetado kWh</th><th class="r">%</th><th class="r">Saldo rest.</th></tr></thead>
+              <tbody>
+                <tr v-for="u in unidadesRateioPredios" :key="u.uc">
+                  <td class="lx-mono">{{ u.uc }}</td>
+                  <td class="rt-nome">{{ u.nome }}</td>
+                  <td class="r rt-num">{{ fmtNum(u.mediaConsumo) }}</td>
+                  <td class="r rt-num rt-inj" style="--c:var(--teal)">{{ fmtNum(u.injetado) }}</td>
+                  <td class="r"><span class="rt-pct" style="--c:var(--teal)">{{ u['%'] }}%</span></td>
+                  <td class="r rt-num rt-mut">{{ fmtNum(u.creditoRestante) }}</td>
+                </tr>
+                <tr v-if="!unidadesRateioPredios.length"><td colspan="6" class="lx-empty">Nenhuma unidade contemplada.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- JAC1 -->
+        <section class="lx-panel accent" style="--c:var(--purple)">
+          <div class="lx-panel-hd">
+            <div>
+              <h3><span class="lx-ic" style="--c:var(--purple)">☀</span>Rateio JAC1 · Iluminação + restantes</h3>
+              <p>{{ unidadesListaDeRateioJac1.length }} unidades · crédito do Centro de Eventos</p>
+            </div>
+            <span class="lx-pill" style="--c:var(--purple)">Total injetado <b class="rt-num">{{ fmtNum(unidadesListaDeRateioJac1.reduce((a, i) => a + i.injetado, 0)) }} kWh</b></span>
+          </div>
+          <div class="lx-tbl-wrap">
+            <table class="lx-tbl rt-tbl">
+              <thead><tr><th>UC</th><th>Nome</th><th class="r">Média kWh</th><th class="r">Injetado kWh</th><th class="r">%</th><th class="r">Saldo rest.</th></tr></thead>
+              <tbody>
+                <template v-for="g in [
+                  { k: 'il', txt: 'Iluminação pública', c: 'var(--orange)', lista: unidadesRateioIluminacao },
+                  { k: 're', txt: 'Prédios restantes', c: 'var(--purple)', lista: unidadesRateioRestantes },
+                ]" :key="g.k">
+                  <tr class="rt-grupo" :style="{ '--c': g.c }">
+                    <td colspan="6">
+                      <span class="rt-grupo-in">
+                        <i></i>{{ g.txt }}
+                        <small>{{ g.lista.length }} unidades</small>
+                        <b class="rt-num">{{ fmtNum(g.lista.reduce((a, i) => a + i.injetado, 0)) }} kWh</b>
+                      </span>
+                    </td>
+                  </tr>
+                  <tr v-for="u in g.lista" :key="g.k + u.uc">
+                    <td class="lx-mono">{{ u.uc }}</td>
+                    <td class="rt-nome">{{ u.nome }}</td>
+                    <td class="r rt-num">{{ fmtNum(u.mediaConsumo) }}</td>
+                    <td class="r rt-num rt-inj" :style="{ '--c': g.c }">{{ fmtNum(u.injetado) }}</td>
+                    <td class="r"><span class="rt-pct" :style="{ '--c': g.c }">{{ u['%'] }}%</span></td>
+                    <td class="r rt-num rt-mut">{{ fmtNum(u.creditoRestante) }}</td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
+    </Transition>
 
-      <!-- Iluminação + Restantes -->
-      <div class="lr-result-section">
-        <div class="lr-result-header lr-rh-amber">
-          <div class="lr-rh-icon">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/>
-              <line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
-            </svg>
+    <!-- Parâmetros do cálculo -->
+    <LxDialog v-model="dlgParametros" titulo="Parâmetros do rateio" :subtitulo="`Base de cálculo · projeção ${anoAtual}`" icone="⚙" cor="var(--teal)" :largura="860">
+      <div class="rt-par">
+        <section class="rt-par-sec" style="--c:var(--green)">
+          <header><span>01</span><div><b>Unidades e consumo</b><small>Unidades ativas e média mensal (últimos 6 meses)</small></div></header>
+          <div class="rt-par-grid">
+            <div><span>Prédios p/ rateio</span><b>{{ prediosRateio.length }}</b><small>unidades ativas</small></div>
+            <div><span>Iluminação p/ rateio</span><b>{{ iluminacaoRateio.length }}</b><small>IP e praças</small></div>
+            <div><span>Consumo prédios</span><b>{{ fmtNum(somaPredios) }}</b><small>kWh/mês</small></div>
+            <div><span>Consumo iluminação</span><b>{{ fmtNum(somaIluminacao) }}</b><small>kWh/mês</small></div>
           </div>
-          <div>
-            <span class="lr-rh-title">Rateio JAC1 — Iluminação + Restantes</span>
-            <span class="lr-rh-count">{{ unidadesListaDeRateioJac1.length }} unidades</span>
+        </section>
+
+        <section class="rt-par-sec" style="--c:var(--teal)">
+          <header><span>02</span><div><b>17 usinas + Paço Municipal</b><small>Projeção anual, autoconsumo e crédito para injeção</small></div></header>
+          <div class="rt-par-grid">
+            <div><span>Consumo usinas</span><b>{{ fmtNum(consumoMedioUsinas) }}</b><small>kWh/ano</small></div>
+            <div><span>Geração usinas</span><b>{{ fmtNum(totalProjetado) }}</b><small>kWh/ano</small></div>
+            <div><span>Pós autoconsumo</span><b>{{ fmtNum(calculoPosAutoConsumo) }}</b><small>kWh/ano</small></div>
+            <div class="dest"><span>Crédito p/ injeção</span><b>{{ fmtNum(creditoParaInjecao) }}</b><small>kWh/mês</small></div>
           </div>
-          <div class="lr-rh-total">
-            Total injetado: <strong>{{ fmtNum(unidadesListaDeRateioJac1.reduce((a,i)=>a+i.injetado,0)) }} kWh</strong>
+        </section>
+
+        <section class="rt-par-sec" style="--c:var(--purple)">
+          <header><span>03</span><div><b>Centro de Eventos JAC1</b><small>Dividido 50% iluminação / 50% prédios restantes</small></div></header>
+          <div class="rt-par-grid">
+            <div><span>Geração JAC1</span><b>{{ fmtNum(totalProjetadoJac1) }}</b><small>kWh/ano</small></div>
+            <div class="dest"><span>Crédito total</span><b>{{ fmtNum(creditoParaInjecaoJac1) }}</b><small>kWh/mês</small></div>
+            <div><span>50% por grupo</span><b>{{ fmtNum(creditoParaInjecaoJac1 / 2) }}</b><small>kWh/mês</small></div>
           </div>
-        </div>
-        <div class="lr-tbl-wrap">
-          <table class="lr-table">
-            <thead class="lr-thead-amber">
-              <tr>
-                <th class="lr-th">UC</th>
-                <th class="lr-th">Nome</th>
-                <th class="lr-th lr-th-r">Média kWh</th>
-                <th class="lr-th lr-th-r">Injetado kWh</th>
-                <th class="lr-th lr-th-r">%</th>
-                <th class="lr-th lr-th-r">Saldo Rest.</th>
-              </tr>
-            </thead>
-            <tbody>
-
-              <!-- ── Grupo: Iluminação Pública ── -->
-              <tr class="lr-group-row">
-                <td colspan="6" class="lr-group-label">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-                    <circle cx="12" cy="12" r="5"/>
-                    <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
-                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
-                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-                  </svg>
-                  Iluminação Pública
-                  <span class="lr-group-count">{{ unidadesRateioIluminacao.length }} unidades</span>
-                  <span class="lr-group-total">{{ fmtNum(unidadesRateioIluminacao.reduce((a,i)=>a+i.injetado,0)) }} kWh</span>
-                </td>
-              </tr>
-              <tr v-for="(u, i) in unidadesRateioIluminacao" :key="'il-'+u.uc" class="lr-tr" :class="{'lr-tr-alt': i%2===1}">
-                <td class="lr-td lr-mono">{{ u.uc }}</td>
-                <td class="lr-td lr-td-nome">{{ u.nome }}</td>
-                <td class="lr-td lr-td-r">{{ fmtNum(u.mediaConsumo) }}</td>
-                <td class="lr-td lr-td-r lr-td-amber">{{ fmtNum(u.injetado) }}</td>
-                <td class="lr-td lr-td-r"><span class="lr-pct-pill lr-pct-amber">{{ u['%'] }}%</span></td>
-                <td class="lr-td lr-td-r lr-td-slate">{{ fmtNum(u.creditoRestante) }}</td>
-              </tr>
-
-              <!-- ── Grupo: Prédios Restantes ── -->
-              <tr class="lr-group-row">
-                <td colspan="6" class="lr-group-label">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-                    <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
-                    <polyline points="9 22 9 12 15 12 15 22"/>
-                  </svg>
-                  Prédios Restantes
-                  <span class="lr-group-count">{{ unidadesRateioRestantes.length }} unidades</span>
-                  <span class="lr-group-total">{{ fmtNum(unidadesRateioRestantes.reduce((a,i)=>a+i.injetado,0)) }} kWh</span>
-                </td>
-              </tr>
-              <tr v-for="(u, i) in unidadesRateioRestantes" :key="'re-'+u.uc" class="lr-tr" :class="{'lr-tr-alt': i%2===1}">
-                <td class="lr-td lr-mono">{{ u.uc }}</td>
-                <td class="lr-td lr-td-nome">{{ u.nome }}</td>
-                <td class="lr-td lr-td-r">{{ fmtNum(u.mediaConsumo) }}</td>
-                <td class="lr-td lr-td-r lr-td-amber">{{ fmtNum(u.injetado) }}</td>
-                <td class="lr-td lr-td-r"><span class="lr-pct-pill lr-pct-amber">{{ u['%'] }}%</span></td>
-                <td class="lr-td lr-td-r lr-td-slate">{{ fmtNum(u.creditoRestante) }}</td>
-              </tr>
-
-            </tbody>
-          </table>
-        </div>
+        </section>
       </div>
-
-    </div>
-
-    <!-- Rodapé -->
-    <div class="lr-footer">
-      Desenvolvido por <strong>Lucentis</strong> · Sistema LUCENTIS — Hortolândia · {{ anoAtual }}
-    </div>
-
+      <template #rodape>
+        <button class="lx-btn-ghost" @click="dlgParametros = false">Fechar</button>
+      </template>
+    </LxDialog>
   </div>
 </template>
 
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=DM+Mono:wght@400;500&display=swap');
+<style scoped>
+/* ── Créditos + ação ── */
+.rt-top { display: grid; grid-template-columns: 1fr 1fr 1.15fr; gap: 14px; margin-bottom: 18px; }
+.rt-cred {
+  position: relative; overflow: hidden; display: flex; flex-direction: column; gap: 6px; padding: 22px 22px 20px; border-radius: 22px;
+  background: radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--c) 26%, transparent), transparent 60%), var(--card);
+  border: 1px solid color-mix(in srgb, var(--c) 40%, transparent); box-shadow: 0 0 46px -20px var(--c);
+}
+.rt-cred::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: linear-gradient(90deg, var(--c), var(--c2)); box-shadow: 0 0 14px var(--c); }
+.rt-cred-ic { width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, var(--c), var(--c2)); margin-bottom: 6px; }
+.rt-cred-lb { font-size: 12px; color: var(--mut); font-weight: 600; letter-spacing: .03em; text-transform: uppercase; }
+.rt-cred b { font-size: clamp(28px, 3.2vw, 38px); font-weight: 700; letter-spacing: -.02em; line-height: 1.05; color: var(--tx); font-variant-numeric: tabular-nums; }
+.rt-cred b small { font-size: 13px; font-weight: 500; color: var(--c); margin-left: 6px; letter-spacing: 0; }
+.rt-cred-nt { font-size: 11.5px; color: var(--mut); }
+.rt-cred-skel { height: 40px; width: 70%; }
 
-/* ══════ ROOT ══════ */
-.lr-root {
-  min-height: 100vh !important;
-  background: #F0FDF9 !important;
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important;
-  color: #0f172a !important;
-  padding-bottom: 40px !important;
+.rt-acao {
+  display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 10px; padding: 22px; border-radius: 22px;
+  background: var(--card); border: 1px dashed var(--line); transition: border-color .3s;
 }
+.rt-acao.ok { border-style: solid; border-color: rgba(34, 197, 94, .4); }
+.rt-acao-tt { font-size: 15px; font-weight: 600; }
+.rt-acao p { margin: 0; font-size: 12.5px; color: var(--mut); line-height: 1.5; }
+.rt-acao-btn { padding: 12px 22px; font-size: 14px; }
+.rt-acao-bts { display: flex; gap: 10px; flex-wrap: wrap; }
+.rt-acao-aviso { font-size: 11.5px; color: var(--orange); }
+.rt-acao-load { padding: 10px; align-self: stretch; }
 
-/* ══════ HEADER ══════ */
-.lr-header {
-  background: linear-gradient(135deg, #ECFDF5 0%, #EEF2FF 100%) !important;
-  border-bottom: 1px solid #E2E8F0 !important;
-  padding: 24px 28px 20px !important;
-  margin-bottom: 28px !important;
-  display: flex !important; align-items: center !important;
-  justify-content: space-between !important; overflow: hidden !important;
+/* ── Tabelas ── */
+.rt-num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.rt-nome { font-weight: 500; max-width: 320px; }
+.rt-inj { color: var(--c); font-weight: 600; }
+.rt-mut { color: var(--mut); }
+.rt-pct { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px; color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); }
+.rt-grupo td { padding: 0; border-bottom: 0; }
+.rt-grupo:hover { background: transparent !important; }
+.rt-grupo-in {
+  display: flex; align-items: center; gap: 10px; margin: 10px 0 4px; padding: 8px 12px; border-radius: 12px;
+  font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--c);
+  background: color-mix(in srgb, var(--c) 10%, transparent); border: 1px solid color-mix(in srgb, var(--c) 28%, transparent);
 }
-.lr-header-left { display: flex !important; align-items: center !important; gap: 16px !important; }
-.lr-header-icon {
-  width: 48px !important; height: 48px !important; border-radius: 13px !important;
-  background: #059669 !important; color: #fff !important;
-  display: flex !important; align-items: center !important; justify-content: center !important;
-  box-shadow: 0 4px 14px rgba(5,150,105,.3) !important; flex-shrink: 0 !important;
-}
-.lr-breadcrumb {
-  display: flex !important; align-items: center !important; gap: 5px !important;
-  font-size: 11px !important; color: #94A3B8 !important; margin-bottom: 3px !important;
-}
-.lr-breadcrumb a { color: #059669 !important; text-decoration: none !important; font-weight: 600 !important; }
-.lr-title { font-size: 26px !important; font-weight: 900 !important; letter-spacing: -.03em !important; color: #0f172a !important; margin: 0 0 3px !important; }
-.lr-sub   { font-size: 13px !important; color: #64748b !important; margin: 0 !important; }
-.lr-header-img { height: 110px !important; opacity: .85 !important; }
+.rt-grupo-in i { width: 7px; height: 7px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); }
+.rt-grupo-in small { color: var(--mut); text-transform: none; letter-spacing: 0; font-weight: 500; }
+.rt-grupo-in b { margin-left: auto; letter-spacing: 0; }
 
-/* ══════ KPI ROW ══════ */
-.lr-kpi-row {
-  display: grid !important;
-  grid-template-columns: repeat(4, 1fr) !important;
-  gap: 12px !important;
-  padding: 0 28px 28px !important;
+/* ── Dialog de parâmetros ── */
+.rt-par { display: grid; gap: 14px; }
+.rt-par-sec { padding: 14px; border-radius: 16px; background: var(--card2); border: 1px solid var(--line); }
+.rt-par-sec header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.rt-par-sec header > span {
+  width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; flex: none; font: 600 12px var(--mono);
+  color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); border: 1px solid color-mix(in srgb, var(--c) 35%, transparent);
 }
-.lr-kpi {
-  background: #fff !important; border: 1px solid #f1f5f9 !important;
-  border-radius: 14px !important; padding: 16px 14px 14px !important;
-  position: relative !important; overflow: hidden !important;
-  display: flex !important; flex-direction: column !important;
-  transition: transform .18s, box-shadow .18s !important;
-}
-.lr-kpi:hover { transform: translateY(-3px) !important; box-shadow: 0 8px 24px rgba(0,0,0,.08) !important; }
-.lr-kpi::before { content:'' !important; position:absolute !important; top:0 !important; left:0 !important; right:0 !important; height:2px !important; }
-.lr-kpi-indigo::before { background:#4F46E5 !important; }
-.lr-kpi-amber::before  { background:#D97706 !important; }
-.lr-kpi-green::before  { background:#059669 !important; }
-.lr-kpi-violet::before { background:#7C3AED !important; }
+.rt-par-sec header b { display: block; font-size: 14px; font-weight: 600; }
+.rt-par-sec header small { font-size: 11.5px; color: var(--mut); }
+.rt-par-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.rt-par-grid > div { display: flex; flex-direction: column; gap: 3px; padding: 11px 12px; border-radius: 12px; background: rgba(255, 255, 255, .03); border: 1px solid var(--line2); }
+.rt-par-grid > div.dest { border-color: color-mix(in srgb, var(--c) 45%, transparent); background: color-mix(in srgb, var(--c) 8%, transparent); }
+.rt-par-grid span { font-size: 11px; color: var(--mut); }
+.rt-par-grid b { font: 600 17px var(--mono); color: var(--tx); font-variant-numeric: tabular-nums; }
+.rt-par-grid .dest b { color: var(--c); }
+.rt-par-grid small { font-size: 10.5px; color: var(--mut); }
 
-.lr-kpi-badge {
-  position: absolute !important; top:13px !important; right:13px !important;
-  width:28px !important; height:28px !important; border-radius:8px !important;
-  display:flex !important; align-items:center !important; justify-content:center !important;
-}
-.lr-kpi-indigo .lr-kpi-badge { background:#EEF2FF !important; color:#4F46E5 !important; }
-.lr-kpi-amber  .lr-kpi-badge { background:#FFFBEB !important; color:#D97706 !important; }
-.lr-kpi-green  .lr-kpi-badge { background:#ECFDF5 !important; color:#059669 !important; }
-.lr-kpi-violet .lr-kpi-badge { background:#F5F3FF !important; color:#7C3AED !important; }
-.lr-kpi-badge svg { stroke: currentColor !important; }
-
-.lr-kpi-label { font-size:10px !important; font-weight:700 !important; letter-spacing:.12em !important; text-transform:uppercase !important; color:#94A3B8 !important; display:block !important; margin-bottom:8px !important; margin-top:2px !important; }
-.lr-kpi-val   { font-size:26px !important; font-weight:900 !important; letter-spacing:-.03em !important; line-height:1 !important; display:block !important; margin-bottom:4px !important; }
-.lr-kpi-note  { font-size:11px !important; color:#94A3B8 !important; font-weight:500 !important; display:block !important; }
-.lr-kpi-indigo .lr-kpi-val { color:#4F46E5 !important; }
-.lr-kpi-amber  .lr-kpi-val { color:#D97706 !important; }
-.lr-kpi-green  .lr-kpi-val { color:#059669 !important; }
-.lr-kpi-violet .lr-kpi-val { color:#7C3AED !important; }
-.lr-kpi-bottom { position:absolute !important; bottom:0 !important; left:0 !important; right:0 !important; height:36px !important; opacity:.04 !important; }
-.lr-kpi-indigo .lr-kpi-bottom { background:#4F46E5 !important; }
-.lr-kpi-amber  .lr-kpi-bottom { background:#D97706 !important; }
-.lr-kpi-green  .lr-kpi-bottom { background:#059669 !important; }
-.lr-kpi-violet .lr-kpi-bottom { background:#7C3AED !important; }
-
-/* ══════ SECTIONS ══════ */
-.lr-section { margin: 0 28px 20px !important; }
-.lr-section-header {
-  display: flex !important; align-items: center !important; gap: 14px !important;
-  padding: 14px 18px !important; border-radius: 12px !important;
-  margin-bottom: 14px !important;
-}
-.lr-sh-green  { background: #ECFDF5 !important; border-left: 4px solid #059669 !important; }
-.lr-sh-indigo { background: #EEF2FF !important; border-left: 4px solid #4F46E5 !important; }
-.lr-sh-amber  { background: #FFFBEB !important; border-left: 4px solid #D97706 !important; }
-.lr-sh-num {
-  width: 32px !important; height: 32px !important; border-radius: 9px !important;
-  background: #059669 !important; color: #fff !important;
-  display: flex !important; align-items: center !important; justify-content: center !important;
-  font-size: 13px !important; font-weight: 900 !important; flex-shrink: 0 !important;
-}
-.lr-sh-title { font-size: 15px !important; font-weight: 800 !important; color: #0f172a !important; margin: 0 0 2px !important; display: block !important; }
-.lr-sh-sub   { font-size: 12px !important; color: #64748b !important; margin: 0 !important; }
-
-/* data cards grid */
-.lr-data-grid { display: grid !important; gap: 10px !important; }
-.lr-data-2 { grid-template-columns: 1fr 1fr !important; }
-.lr-data-3 { grid-template-columns: repeat(3, 1fr) !important; }
-.lr-data-4 { grid-template-columns: repeat(4, 1fr) !important; }
-
-.lr-data-card {
-  background: #fff !important; border: 1px solid #E2E8F0 !important;
-  border-radius: 12px !important; padding: 16px 18px !important;
-  display: flex !important; flex-direction: column !important; gap: 4px !important;
-  position: relative !important;
-}
-.lr-data-card::before { content:'' !important; position:absolute !important; top:0 !important; left:0 !important; right:0 !important; height:2px !important; border-radius:12px 12px 0 0 !important; }
-.lr-dc-indigo::before { background:#4F46E5 !important; }
-.lr-dc-amber::before  { background:#D97706 !important; }
-.lr-dc-green::before  { background:#059669 !important; }
-.lr-dc-violet::before { background:#7C3AED !important; }
-.lr-dc-slate::before  { background:#64748B !important; }
-
-.lr-dc-label { font-size:10px !important; font-weight:700 !important; letter-spacing:.1em !important; text-transform:uppercase !important; color:#94A3B8 !important; }
-.lr-dc-val   { font-size:22px !important; font-weight:900 !important; letter-spacing:-.03em !important; color:#0f172a !important; line-height:1 !important; }
-.lr-dc-unit  { font-size:11px !important; color:#94A3B8 !important; }
-.lr-dc-indigo .lr-dc-val { color:#4F46E5 !important; }
-.lr-dc-amber  .lr-dc-val { color:#D97706 !important; }
-.lr-dc-green  .lr-dc-val { color:#059669 !important; }
-.lr-dc-violet .lr-dc-val { color:#7C3AED !important; }
-
-/* ══════ AÇÕES ══════ */
-.lr-actions {
-  display: flex !important; justify-content: center !important;
-  padding: 8px 28px 28px !important;
-}
-.lr-btn-calc {
-  display: flex !important; align-items: center !important; gap: 8px !important;
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important;
-  font-size: 14px !important; font-weight: 800 !important;
-  background: #4F46E5 !important; color: #fff !important;
-  border: none !important; border-radius: 12px !important; padding: 13px 32px !important;
-  cursor: pointer !important; box-shadow: 0 4px 16px rgba(79,70,229,.35) !important;
-  transition: all .16s !important;
-}
-.lr-btn-calc:hover { background: #4338CA !important; transform: translateY(-1px) !important; }
-.lr-btn-calc svg { stroke: #fff !important; }
-
-.lr-result-actions { display: flex !important; align-items: center !important; gap: 12px !important; flex-wrap: wrap !important; justify-content: center !important; }
-.lr-result-badge {
-  display: flex !important; align-items: center !important; gap: 7px !important;
-  background: #ECFDF5 !important; border: 1px solid #A7F3D0 !important;
-  border-radius: 20px !important; padding: 8px 16px !important;
-  font-size: 13px !important; font-weight: 700 !important; color: #047857 !important;
-}
-.lr-result-badge svg { stroke: #059669 !important; }
-.lr-btn-download {
-  display: flex !important; align-items: center !important; gap: 7px !important;
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important;
-  font-size: 13px !important; font-weight: 800 !important;
-  background: #059669 !important; color: #fff !important;
-  border: none !important; border-radius: 11px !important; padding: 11px 24px !important;
-  cursor: pointer !important; box-shadow: 0 3px 12px rgba(5,150,105,.35) !important;
-  transition: all .15s !important;
-}
-.lr-btn-download:hover { background: #047857 !important; }
-.lr-btn-download svg { stroke: #fff !important; }
-.lr-btn-recalc {
-  display: flex !important; align-items: center !important; gap: 6px !important;
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important;
-  font-size: 12px !important; font-weight: 700 !important;
-  background: #fff !important; color: #4F46E5 !important;
-  border: 1.5px solid #C7D2FE !important; border-radius: 11px !important; padding: 10px 18px !important;
-  cursor: pointer !important; transition: all .15s !important;
-}
-.lr-btn-recalc:hover { background: #EEF2FF !important; }
-.lr-btn-recalc svg { stroke: #4F46E5 !important; }
-
-/* ══════ TABELAS DE RESULTADO ══════ */
-.lr-results { padding: 0 28px !important; display: flex !important; flex-direction: column !important; gap: 24px !important; }
-
-.lr-result-section { background: #fff !important; border: 1px solid #E2E8F0 !important; border-radius: 16px !important; overflow: hidden !important; box-shadow: 0 1px 6px rgba(0,0,0,.05) !important; }
-
-.lr-result-header {
-  display: flex !important; align-items: center !important; gap: 12px !important;
-  padding: 16px 20px !important; border-bottom: 1px solid #F1F5F9 !important; flex-wrap: wrap !important;
-}
-.lr-rh-indigo { background: linear-gradient(90deg,#EEF2FF,#fff) !important; border-left: 4px solid #4F46E5 !important; }
-.lr-rh-amber  { background: linear-gradient(90deg,#FFFBEB,#fff) !important; border-left: 4px solid #D97706 !important; }
-.lr-rh-icon {
-  width: 34px !important; height: 34px !important; border-radius: 9px !important;
-  display: flex !important; align-items: center !important; justify-content: center !important; flex-shrink: 0 !important;
-}
-.lr-rh-indigo .lr-rh-icon { background: #EEF2FF !important; color: #4F46E5 !important; }
-.lr-rh-amber  .lr-rh-icon { background: #FFFBEB !important; color: #D97706 !important; }
-.lr-rh-icon svg { stroke: currentColor !important; }
-.lr-rh-title { font-size: 14px !important; font-weight: 800 !important; color: #0f172a !important; display: block !important; }
-.lr-rh-count { font-size: 11px !important; color: #94A3B8 !important; font-weight: 500 !important; }
-.lr-rh-total { margin-left: auto !important; font-size: 12px !important; color: #475569 !important; font-weight: 600 !important; }
-.lr-rh-total strong { color: #059669 !important; font-weight: 800 !important; }
-
-.lr-tbl-wrap { overflow-x: auto !important; }
-.lr-table { width: 100% !important; border-collapse: collapse !important; font-size: 12px !important; font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important; }
-.lr-thead-indigo th { background: #4F46E5 !important; color: #fff !important; }
-.lr-thead-amber  th { background: #D97706 !important; color: #fff !important; }
-.lr-th { font-size: 10px !important; font-weight: 700 !important; letter-spacing: .07em !important; text-transform: uppercase !important; padding: 10px 14px !important; text-align: left !important; white-space: nowrap !important; border: none !important; }
-.lr-th-r { text-align: right !important; }
-.lr-tr td { border-bottom: 1px solid #F1F5F9 !important; }
-.lr-tr:hover td { background: #F8FAFC !important; }
-.lr-tr-alt td { background: #FAFBFF !important; }
-.lr-td { padding: 9px 14px !important; color: #0f172a !important; vertical-align: middle !important; }
-.lr-td-r { text-align: right !important; font-weight: 700 !important; font-family: 'DM Mono', monospace !important; }
-.lr-td-nome { font-weight: 600 !important; max-width: 260px !important; }
-.lr-td-green { color: #059669 !important; }
-.lr-td-amber { color: #D97706 !important; }
-.lr-td-slate { color: #94A3B8 !important; }
-.lr-mono { font-family: 'DM Mono', monospace !important; font-size: 11px !important; color: #64748b !important; }
-
-.lr-pct-pill {
-  display: inline-block !important; background: #EEF2FF !important; color: #4F46E5 !important;
-  font-size: 10px !important; font-weight: 800 !important;
-  padding: 2px 8px !important; border-radius: 20px !important;
-}
-.lr-pct-amber { background: #FFFBEB !important; color: #D97706 !important; }
-
-/* ══════ GROUP ROWS NA TABELA ══════ */
-.lr-group-row { background: #F8FAFC !important; }
-.lr-group-label {
-  padding: 8px 14px !important;
-  font-size: 11px !important; font-weight: 800 !important;
-  color: #475569 !important; letter-spacing: .04em !important;
-  text-transform: uppercase !important;
-  display: flex !important; align-items: center !important; gap: 8px !important;
-  border-top: 2px solid #E2E8F0 !important;
-  border-bottom: 1px solid #E2E8F0 !important;
-}
-.lr-group-label svg { stroke: #D97706 !important; flex-shrink: 0 !important; }
-.lr-group-count {
-  background: #EEF2FF !important; color: #4F46E5 !important;
-  font-size: 10px !important; font-weight: 800 !important;
-  padding: 2px 8px !important; border-radius: 20px !important;
-  margin-left: 4px !important;
-}
-.lr-group-total {
-  background: #ECFDF5 !important; color: #047857 !important;
-  font-size: 10px !important; font-weight: 800 !important;
-  padding: 2px 8px !important; border-radius: 20px !important;
-  font-family: 'DM Mono', monospace !important;
-}
-
-/* ══════ FOOTER ══════ */
-.lr-footer {
-  text-align: center !important; padding: 24px 28px 0 !important;
-  font-size: 12px !important; color: #94A3B8 !important;
-}
-.lr-footer strong { color: #059669 !important; font-weight: 700 !important; }
-
-/* ══════ MOBILE ══════ */
-@media (max-width: 900px) {
-  .lr-kpi-row { grid-template-columns: 1fr 1fr !important; }
-  .lr-data-4  { grid-template-columns: 1fr 1fr !important; }
-  .lr-data-3  { grid-template-columns: 1fr 1fr !important; }
-}
-@media (max-width: 600px) {
-  .lr-header { padding: 16px 20px !important; flex-direction: column !important; align-items: flex-start !important; }
-  .lr-header-img { display: none !important; }
-  .lr-title  { font-size: 22px !important; }
-  .lr-kpi-row, .lr-data-2, .lr-data-3, .lr-data-4 { grid-template-columns: 1fr !important; padding: 0 16px 16px !important; }
-  .lr-section, .lr-results, .lr-actions { padding-left: 16px !important; padding-right: 16px !important; }
-}
-
-/* ══════ GROUP ROWS ══════ */
-.lr-group-row td { padding: 0 !important; }
-.lr-group-label {
-  display: flex !important; align-items: center !important; gap: 8px !important;
-  padding: 9px 14px !important;
-  background: #FFFBEB !important;
-  border-top: 1px solid #FDE68A !important;
-  border-bottom: 1px solid #FDE68A !important;
-  font-size: 11px !important; font-weight: 800 !important;
-  color: #92400E !important; text-transform: uppercase !important;
-  letter-spacing: .08em !important;
-}
-.lr-group-label svg { stroke: #D97706 !important; flex-shrink: 0 !important; }
-.lr-group-count {
-  margin-left: 4px !important;
-  background: #FEF9C3 !important; color: #92400E !important;
-  font-size: 10px !important; font-weight: 700 !important;
-  padding: 1px 8px !important; border-radius: 20px !important;
-}
-.lr-group-total {
-  margin-left: auto !important;
-  font-size: 12px !important; font-weight: 800 !important; color: #D97706 !important;
-  font-family: 'DM Mono', monospace !important;
-}
-
+@media (max-width: 1100px) { .rt-top { grid-template-columns: 1fr 1fr; } .rt-acao { grid-column: 1 / -1; } }
+@media (max-width: 640px) { .rt-top { grid-template-columns: 1fr; } }
 </style>

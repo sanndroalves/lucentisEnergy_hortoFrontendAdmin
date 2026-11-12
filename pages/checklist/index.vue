@@ -1,585 +1,316 @@
 <script setup>
-import { useHead  } from '@vueuse/head';
+import { ref, computed } from 'vue';
+import { useHead } from '@vueuse/head';
 import { API_BASE_URL } from '~/base/link';
+import { statusChecklistDe } from '~/composables/useAlertasUsinas';
 
-// Defina o título da página
-useHead ({
-  title: 'CheckList'
-});
+useHead({ title: 'Checklist' });
+definePageMeta({ middleware: 'sidebase-auth' });
 
-definePageMeta({
-  middleware: 'sidebase-auth'
-})
+const { data: usinas, pending: pUsinas } = useLazyFetch(`${API_BASE_URL}/usina/`);
+const { data: checklists, pending: pCheck, refresh: recarregar } = useLazyFetch(`${API_BASE_URL}/checklist/`);
+const carregando = computed(() => pUsinas.value || pCheck.value);
 
-import { ref } from "vue";
-import UiParentCard from "@/components/shared/UiParentCard.vue";
+const lUsinas = computed(() => [...(usinas.value ?? [])].sort((a, b) => String(a.nome).localeCompare(String(b.nome))));
+const lChecks = computed(() => checklists.value ?? []);
 
-const cateSelecionada = ref()
+// ─── Situações ───
+const SIT = {
+  O: { txt: 'Ótimo', c: 'var(--green)' },
+  B: { txt: 'Bom', c: 'var(--teal)' },
+  R: { txt: 'Ruim', c: 'var(--orange)' },
+  Q: { txt: 'Quebrado', c: 'var(--red)' },
+  M: { txt: 'Manutenção', c: 'var(--purple)' },
+};
+const sit = (s) => SIT[s] ?? { txt: 'Desconhecido', c: 'var(--mut)' };
+const ITENS = [
+  { k: 'placa', txt: 'Situação das placas' },
+  { k: 'inversor', txt: 'Situação do inversor' },
+  { k: 'roteador', txt: 'Situação do sinal Wi-Fi' },
+];
 
-const predioSelect = ref()
-const { data: usinas } = await useFetch(`${API_BASE_URL}/usina/`);
-const { data: checklists } = await useFetch(`${API_BASE_URL}/checklist/`);
+// ─── Mês corrente ───
+const hoje = new Date();
+const doMesAtual = (c) => { const d = new Date(c.data); return d.getMonth() === hoje.getMonth() && d.getFullYear() === hoje.getFullYear(); };
+const MES_TXT = hoje.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+const usinasFeitasMes = computed(() => new Set(lChecks.value.filter(doMesAtual).map(c => String(c.idUsina))));
+const status = (idUsina) => statusChecklistDe(lChecks.value, idUsina);
 
-
-// CARDS VALORES
-
-const mesAtual = new Date().getMonth() + 1; 
-const anoAtual = new Date().getFullYear();
-
-const mesFilter = checklists.value.filter(item => {
-    const date = new Date(item.data);
-    const itemMonth = date.getMonth() + 1; 
-    const itemYear = date.getFullYear();
-    return itemMonth === mesAtual && itemYear === anoAtual;
-});
- 
-// FORMULÁRIO CHECKLIST
-const array = []
-    for(var id in usinas._rawValue){ 
-        const usina = usinas._rawValue[id];
-        array.push({ id: usina.id, nome: usina.nome });
-    }
-
-const sitPlaca = ref()
-const sitInversor = ref()
-const sitRoteador = ref()
-const checkComentario = ref()
-
-const showAlertCampo = ref(false)
-const showAlertError = ref(false)
-const showAlertSuccess = ref(false)
-const showAlertErrorMes = ref(false)
-
-
-const enviarCheck = async () =>{
-    if(!sitPlaca.value || !sitInversor.value || !sitRoteador.value || !checkComentario.value){
-      showAlertCampo.value = true
-      showAlertError.value = false
-      showAlertSuccess.value = false
-    }
-
-    const { data: usinaInfo } = await useFetch(`${API_BASE_URL}/checklist?idUsina=${predioSelect.value.id}`);
-    const mesAtual = new Date().getMonth() + 1; 
-
-    const mesFilter = usinaInfo.value.filter(item => {
-        const date = new Date(item.data);
-        const itemMonth = date.getMonth() + 1; 
-        const itemYear = date.getFullYear();
-        return itemMonth === mesAtual && itemYear === anoAtual;
-    });
-
-    if (usinaInfo && mesFilter.length > 0) {
-        showAlertErrorMes.value = true
-        showAlertError.value = false
-        showAlertCampo.value = false
-        showAlertSuccess.value = false
-        return;
-    }
-
-    try {
-      const response = await useFetch(`${API_BASE_URL}/checklist/`, {
-                method: 'POST',
-                body: {
-                    idUsina: predioSelect.value.id,
-                    sitPlaca: sitPlaca.value,
-                    sitInversor: sitInversor.value,
-                    sitRoteador: sitRoteador.value,
-                    comentario: checkComentario.value,
-        }
-      })
-      if(!response.error.value){
-          showAlertError.value = false
-          showAlertCampo.value = false
-          showAlertSuccess.value = true
-          showAlertErrorMes.value = false
-      }else{
-        showAlertError.value = true
-        showAlertCampo.value = false
-        showAlertSuccess.value = false
-        showAlertErrorMes.value = false
-      }
-    } catch (error) {
-        showAlertError.value = true
-        showAlertCampo.value = false
-        showAlertSuccess.value = false
-        showAlertErrorMes.value = false
-    }
-
-}
- 
-
-// TABELA CHECKLISTS
-const qtdChecks =  (idUsina) =>{
-    const qtd = checklists.value.filter(item => item.idUsina == idUsina)
-    return qtd.length
-}
-
-const verificarStatus = (idUsina) =>{ 
-  const mesAtual = new Date().getMonth() + 1; 
-  
-  const selectedCheckListUsina = checklists.value.filter(item => item.idUsina == idUsina);
-
-const checkListUsina = selectedCheckListUsina.filter(item => { 
-    const date = new Date(item.data);
-    const itemMonth = date.getMonth() + 1;
-    const itemYear = date.getFullYear();
-    return itemMonth === mesAtual && itemYear === anoAtual; 
-});
-  
-  if(!checkListUsina[0]){
-    return "SEM CHECKLIST";
-  }
-
-  /*
-    1 - ÓTIMO: 3 OTIMOS/2 ÓTIMOS E 1 BOM
-    2 - BOM: 1 ÓTIMO E 2 BONS / 3 BONS
-    3 - VERIFICAR: ELSE EM TODOS ACIMA 
-  */
- 
-  let placa = checkListUsina[0].sitPlaca
-  let inversor = checkListUsina[0].sitInversor
-  let roteador = checkListUsina[0].sitRoteador
-
-  const STATUS_CHECKLIST = {
-    "O": "Ótimo",
-    "B": "Bom",
-    "R": "Ruim",
-    "Q": "Quebrado",
-    "M": "Manutenção"
+const resumo = computed(() => {
+  const feitas = lUsinas.value.filter(u => usinasFeitasMes.value.has(String(u.id))).length;
+  return {
+    aFazer: lUsinas.value.length - feitas,
+    feitas,
+    total: lChecks.value.length,
+    verificar: lUsinas.value.filter(u => status(u.id).txt === 'Verificar').length,
   };
+});
 
-  const statusCounts = {
-    "Ótimo": 0,
-    "Bom": 0,
-    "Ruim": 0,
-    "Quebrado": 0,
-    "Manutenção": 0
-  };
-
-  const statuses = [placa, inversor, roteador];
-
-  statuses.forEach(status => {
-    const statusDesc = STATUS_CHECKLIST[status];
-    if (statusDesc) {
-      statusCounts[statusDesc]++;
-    }
+// ─── Tabela de usinas ───
+const aba = ref('lista');
+const busca = ref('');
+const filtroMes = ref('T');
+const normalizar = (t) => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const porUsina = computed(() => {
+  const m = new Map();
+  lChecks.value.forEach(c => {
+    const k = String(c.idUsina);
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(c);
   });
- 
+  m.forEach(l => l.sort((a, b) => String(b.data).localeCompare(String(a.data))));
+  return m;
+});
+const linhas = computed(() => {
+  const q = normalizar(busca.value.trim());
+  return lUsinas.value
+    .filter(u => !q || normalizar(u.nome).includes(q) || String(u.uc ?? '').includes(q))
+    .filter(u => filtroMes.value === 'T' || (filtroMes.value === 'F') === usinasFeitasMes.value.has(String(u.id)))
+    .map(u => { const l = porUsina.value.get(String(u.id)) ?? []; return { u, qtd: l.length, ultimo: l[0] ?? null, st: status(u.id) }; });
+});
+const mesAno = (d) => { const dt = new Date(d); return isNaN(dt) ? '—' : `${String(dt.getMonth() + 1).padStart(2, '0')}/${dt.getFullYear()}`; };
+const dataBR = (d) => { const dt = new Date(d); return isNaN(dt) ? '—' : dt.toLocaleDateString('pt-BR'); };
 
-  let classificacaoFinal = "VERIFICAR";
+// ─── Novo checklist (mesma regra de antes: um por usina por mês) ───
+const usinaSel = ref('');
+const resp = ref({ placa: '', inversor: '', roteador: '' });
+const comentario = ref('');
+const tentou = ref(false);
+const enviando = ref(false);
+const aviso = ref(null); // { tipo: 'ok'|'err'|'warn', txt }
 
-  if (statusCounts["Ótimo"] === 3) {
-    classificacaoFinal = "ÓTIMO";
-  } else if (statusCounts["Ótimo"] === 2 && statusCounts["Bom"] === 1) {
-    classificacaoFinal = "ÓTIMO";
-  } else if (statusCounts["Bom"] === 2 && statusCounts["Ótimo"] === 1) {
-    classificacaoFinal = "BOM";
-  } else if (statusCounts["Bom"] === 3) {
-    classificacaoFinal = "BOM";
-  }
+const faltando = computed(() => ({
+  usina: !usinaSel.value,
+  placa: !resp.value.placa, inversor: !resp.value.inversor, roteador: !resp.value.roteador,
+  comentario: !String(comentario.value).trim(),
+}));
+const invalido = (k) => tentou.value && faltando.value[k];
+const jaFeitoMes = computed(() => !!usinaSel.value && usinasFeitasMes.value.has(String(usinaSel.value)));
 
-  return classificacaoFinal;
-}
-
-// DIALOG CHECKLISTS
-const dialogListCheckLists = ref(false)
-const dadosUsina = ref()
-const dadosCheck = ref()
-
-const openDialog = async (idUsina) =>{
-  dialogListCheckLists.value = true
-  const dados = usinas.value.filter(item => item.id == idUsina)
-  dadosUsina.value = dados[0]
-
-  dadosCheck.value = checklists.value.filter(item => item.idUsina == idUsina)
-}
-
-const getStatusLabel = (status) => {
-  switch (status) {
-    case "O":
-      return "Ótimo";
-    case "B":
-      return "Bom";
-    case "R":
-      return "Ruim";
-    case "Q":
-      return "Quebrado";
-    case "M":
-      return "Manutenção";
-    default:
-      return "Desconhecido";
-  }
+const novoChecklist = (idUsina = '') => {
+  usinaSel.value = idUsina ? String(idUsina) : '';
+  resp.value = { placa: '', inversor: '', roteador: '' };
+  comentario.value = '';
+  tentou.value = false;
+  aviso.value = null;
+  aba.value = 'novo';
 };
 
-const getStatusColorClass = (status) => {
-  const colorMap = {
-    O: "success",
-    B: "primary",
-    R: "warning",
-    Q: "error",
-    M: "warning",
-  };
-
-  return colorMap[status] || "bg-primary";
+const enviarCheck = async () => {
+  tentou.value = true;
+  aviso.value = null;
+  if (Object.values(faltando.value).some(Boolean)) { aviso.value = { tipo: 'err', txt: 'Preencha todos os campos antes de enviar o checklist.' }; return; }
+  enviando.value = true;
+  try {
+    // confere de novo no servidor, caso alguém tenha lançado agora
+    const daUsina = await $fetch(`${API_BASE_URL}/checklist?idUsina=${usinaSel.value}`);
+    if ((daUsina ?? []).some(doMesAtual)) {
+      aviso.value = { tipo: 'warn', txt: 'O checklist dessa usina já foi preenchido neste mês.' };
+    } else {
+      await $fetch(`${API_BASE_URL}/checklist/`, {
+        method: 'POST',
+        body: { idUsina: Number(usinaSel.value), sitPlaca: resp.value.placa, sitInversor: resp.value.inversor, sitRoteador: resp.value.roteador, comentario: comentario.value },
+      });
+      aviso.value = { tipo: 'ok', txt: 'Checklist enviado com sucesso.' };
+      resp.value = { placa: '', inversor: '', roteador: '' };
+      comentario.value = '';
+      tentou.value = false;
+      await recarregar();
+    }
+  } catch (e) {
+    console.error(e);
+    aviso.value = { tipo: 'err', txt: 'Erro ao enviar o checklist.' };
+  }
+  enviando.value = false;
 };
 
-// APAGANDO CHECKLIST DA LISTA
+// ─── Histórico de uma usina ───
+const dialog = ref(false);
+const usinaDlg = ref(null);
+const checksDlg = computed(() => (usinaDlg.value ? porUsina.value.get(String(usinaDlg.value.id)) ?? [] : []));
+const abrirHistorico = (u) => { usinaDlg.value = u; dialog.value = true; };
 
-const deleteCheck = async (idCheck) => {
-    try {
-        await useFetch(`${API_BASE_URL}/checklist/${idCheck}`, {
-          method: 'DELETE',
-          key: 'deleteCheck'
-        });
-
-        const { data: checklists } = await useFetch(`${API_BASE_URL}/checklist/`);
-        dadosCheck.value = checklists.value.filter(item => item.idUsina == idUsina)
-        
-
-      } catch (error) {
-        alert("Erro ao excluir a checklist..");
-      }
-    }
-
-    //FORMATANDO DATA DO DIALGO
-    const formatarMesAno = (data) => {
-      const dataObj = new Date(data);
-      const mes = String(dataObj.getMonth() + 1).padStart(2, '0'); // Meses em JS começam em 0, então adicionamos 1
-      const ano = dataObj.getFullYear();
-      return `${mes}/${ano}`;
-    }
+const excluindo = ref(null);
+const deleteCheck = async (check) => {
+  if (!confirm(`Excluir o checklist de ${mesAno(check.data)}?`)) return;
+  excluindo.value = check.id;
+  try {
+    await $fetch(`${API_BASE_URL}/checklist/${check.id}`, { method: 'DELETE' });
+    await recarregar();
+  } catch (e) {
+    console.error(e);
+    alert('Erro ao excluir o checklist.');
+  }
+  excluindo.value = null;
+};
 </script>
+
 <template>
-  <!--BANNER-->
-  <v-row>
-    <div
-      class="v-card v-theme--BLUE_THEME v-card--density-default elevation-10 rounded-md v-card--variant-elevated bg-lightprimary elevation-0 rounded-md mb-8"
-    >
-      <div class="px-8 py-8 py-lg-0">
-        <div class="d-flex justify-space-between">
-          <div class="d-flex py-0 align-center">
-            <div>
-              <h3 class="text-h3 mb-2">CheckList</h3>
-              <ul
-                class="v-breadcrumbs v-breadcrumbs--density-default text-h6 font-weight-medium pa-0 ml-n1"
-              >
-                <!---->
-                <li class="v-breadcrumbs-item" text="Solar">
-                  <a class="v-breadcrumbs-item--link" href="/" style="text-decoration:none"
-                    ><h6 class="text-medium-emphasis text-subtitle-1">
-                        Solar
-                    </h6></a
-                  >
-                </li>
-                <li class="v-breadcrumbs-divider">
-                  <div class="d-flex align-center text-h3 mt-n4">.</div>
-                </li>
-                <li
-                  class="v-breadcrumbs-item v-breadcrumbs-item--disabled"
-                  text="Usinas"
-                >
-                  <h6 class="text-medium-emphasis text-subtitle-1">CheckList</h6>
-                </li>
-                <!----><!---->
-              </ul>
-            </div>
-          </div>
-          <div class="d-none py-0 d-lg-block overflow-hidden">
-            <div class="mb-n16 mt-3">
-              <img src="https://i.imgur.com/vpEwz5j.png" height="200" alt="breadcrumbw" />
-            </div>
+  <div class="lx-page">
+    <header class="lx-head">
+      <div>
+        <nav class="lx-crumb" aria-label="Você está em">
+          <NuxtLink to="/">Início</NuxtLink><span class="sep">›</span><span>Fotovoltaico</span><span class="sep">›</span><b>Checklist</b>
+        </nav>
+        <h1 class="lx-title">Checklist <span class="grad">de vistoria</span></h1>
+        <p class="lx-sub">Vistoria mensal em campo de placas, inversor e sinal Wi-Fi de cada usina</p>
+      </div>
+      <div class="lx-head-actions">
+        <button class="lx-btn" style="--c1:var(--teal);--c2:var(--green)" @click="novoChecklist()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Novo checklist
+        </button>
+      </div>
+    </header>
+
+    <section class="lx-kpis">
+      <div class="lx-kpi" style="--c:var(--orange)"><span class="ico">◷</span><span>A fazer no mês</span><b>{{ carregando ? '…' : resumo.aFazer }}</b><small>usinas sem checklist em {{ MES_TXT }}</small></div>
+      <div class="lx-kpi" style="--c:var(--green)"><span class="ico">✓</span><span>Feitos no mês</span><b>{{ carregando ? '…' : resumo.feitas }}</b><small>de {{ lUsinas.length }} usinas</small></div>
+      <div class="lx-kpi" style="--c:var(--red)"><span class="ico">!</span><span>Para verificar</span><b>{{ carregando ? '…' : resumo.verificar }}</b><small>com item ruim, quebrado ou em manutenção</small></div>
+      <div class="lx-kpi" style="--c:var(--purple)"><span class="ico">▦</span><span>Realizados (geral)</span><b>{{ carregando ? '…' : resumo.total }}</b><small>desde o início</small></div>
+    </section>
+
+    <div class="lx-seg ck-abas" role="tablist" aria-label="Seções">
+      <button role="tab" :aria-selected="aba === 'lista'" :class="{ on: aba === 'lista' }" @click="aba = 'lista'">Usinas</button>
+      <button role="tab" :aria-selected="aba === 'novo'" :class="{ on: aba === 'novo' }" style="--c:var(--green)" @click="aba = 'novo'">Novo checklist</button>
+    </div>
+
+    <!-- ── Lista de usinas ── -->
+    <section v-if="aba === 'lista'" class="lx-panel">
+      <div class="lx-panel-hd">
+        <div>
+          <h3><span class="lx-ic" style="--c:var(--teal)">☀</span>Situação por usina</h3>
+          <p>Status calculado pelo checklist de {{ MES_TXT }}</p>
+        </div>
+        <div class="ck-tools">
+          <label class="lx-search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input v-model="busca" class="lx-input" type="search" placeholder="Buscar por nome ou UC" aria-label="Buscar usina">
+          </label>
+          <div class="lx-seg" role="group" aria-label="Filtrar pelo mês">
+            <button :class="{ on: filtroMes === 'T' }" @click="filtroMes = 'T'">Todas</button>
+            <button :class="{ on: filtroMes === 'P' }" style="--c:var(--orange)" @click="filtroMes = 'P'">Pendentes</button>
+            <button :class="{ on: filtroMes === 'F' }" style="--c:var(--green)" @click="filtroMes = 'F'">Feitas</button>
           </div>
         </div>
       </div>
-    </div>
-  </v-row>
- 
-  <!--CAIXAS DASHBOARD-->
-  <div class="v-col v-col-12">
-    <v-row justify="space-around">  
-      <div class="v-col-sm-4 v-col-md-4 v-col-lg-4 v-col-12">
-        <div class="text-decoration-none d-flex align-center justify-center text-center rounded-md pa-6 bg-lightwarning">
-          <div class="bg-lightwarning">
-            <BoltIcon size="30" class="text-warning" />
-            <div class="text-subtitle-1 text-capitalize font-weight-bold mt-3 text-warning">
-              A fazer (mês)
-            </div>
-            <h4 class="text-h4 mt-1 text-warning">
-              {{(Number(usinas.length) - Number(mesFilter.length))}}
-            </h4>
-          </div>
-        </div>
-      </div> 
 
-      <div class="v-col-sm-4 v-col-md-4 v-col-lg-4 v-col-12">
-        <div class="text-decoration-none d-flex align-center justify-center text-center rounded-md pa-6 bg-lightsuccess">
-          <div class="bg-lightsuccess">
-            <XIcon size="30" class="text-success" />
-            <div class="text-subtitle-1 text-capitalize font-weight-bold mt-3 text-success">
-              Realizados (Geral)
-            </div>
-            <h4 class="text-h4 mt-1 text-success">
-              {{ checklists.length }}
-          </h4>
+      <div v-if="carregando" class="ck-load" role="status"><i class="ck-spin" aria-hidden="true"></i>Carregando checklists…</div>
+      <p v-else-if="!linhas.length" class="lx-empty">Nenhuma usina encontrada.</p>
+      <div v-else class="lx-tbl-wrap">
+        <table class="lx-tbl">
+          <thead><tr><th>UC</th><th>Usina</th><th class="c">Checklists</th><th>Último</th><th class="c">Status do mês</th><th class="c">Ações</th></tr></thead>
+          <tbody>
+            <tr v-for="l in linhas" :key="l.u.id">
+              <td class="lx-mono">{{ l.u.uc }}</td>
+              <td><NuxtLink :to="`/usinas/${l.u.id}`" class="ck-link">{{ l.u.nome }}</NuxtLink></td>
+              <td class="c">{{ l.qtd }}</td>
+              <td>{{ l.ultimo ? dataBR(l.ultimo.data) : '—' }}</td>
+              <td class="c"><span class="lx-pill" :style="{ '--c': l.st.cor }"><i></i>{{ l.st.txt }}</span></td>
+              <td class="c">
+                <div class="ck-acts">
+                  <button class="lx-icon-btn" style="--c:var(--teal)" title="Ver checklists" :aria-label="`Ver checklists de ${l.u.nome}`" @click="abrirHistorico(l.u)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+                  </button>
+                  <button v-if="!usinasFeitasMes.has(String(l.u.id))" class="lx-icon-btn" style="--c:var(--green)" title="Fazer checklist" :aria-label="`Fazer checklist de ${l.u.nome}`" @click="novoChecklist(l.u.id)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ── Novo checklist ── -->
+    <section v-else class="lx-panel accent" style="--c:var(--green)">
+      <div class="lx-panel-hd">
+        <div>
+          <h3><span class="lx-ic" style="--c:var(--green)">✓</span>Novo checklist</h3>
+          <p>Um checklist por usina por mês · {{ MES_TXT }}</p>
+        </div>
+      </div>
+
+      <div v-if="aviso" class="lx-alert" :class="aviso.tipo">{{ aviso.txt }}</div>
+
+      <form class="lx-form" @submit.prevent="enviarCheck">
+        <div class="lx-field full" :class="{ inv: invalido('usina') }">
+          <label for="ck-usina">Usina *</label>
+          <select id="ck-usina" v-model="usinaSel" class="lx-input" :disabled="carregando">
+            <option value="" disabled>{{ carregando ? 'Carregando usinas…' : 'Selecione a usina' }}</option>
+            <option v-for="u in lUsinas" :key="u.id" :value="String(u.id)">{{ u.nome }}{{ usinasFeitasMes.has(String(u.id)) ? ' (já feito este mês)' : '' }}</option>
+          </select>
+          <small v-if="jaFeitoMes" class="ck-warn">Essa usina já tem checklist em {{ MES_TXT }}.</small>
+        </div>
+
+        <div v-for="it in ITENS" :key="it.k" class="lx-field full" :class="{ inv: invalido(it.k) }">
+          <label>{{ it.txt }} *</label>
+          <div class="lx-seg" role="radiogroup" :aria-label="it.txt">
+            <button v-for="(s, k) in SIT" :key="k" type="button" role="radio" :aria-checked="resp[it.k] === k" :class="{ on: resp[it.k] === k }" :style="{ '--c': s.c }" @click="resp[it.k] = k">{{ s.txt }}</button>
           </div>
         </div>
-      </div> 
-    </v-row>
+
+        <div class="lx-field full" :class="{ inv: invalido('comentario') }">
+          <label for="ck-com">Comentário *</label>
+          <textarea id="ck-com" v-model="comentario" rows="3" class="lx-input" placeholder="Observações da vistoria"></textarea>
+        </div>
+
+        <div class="ck-ft full">
+          <button type="button" class="lx-btn-ghost" @click="aba = 'lista'">Voltar para a lista</button>
+          <button type="submit" class="lx-btn" style="--c1:var(--teal);--c2:var(--green)" :disabled="enviando || carregando">{{ enviando ? 'Enviando…' : 'Enviar checklist' }}</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- ── Histórico da usina ── -->
+    <LxDialog v-model="dialog" titulo="Checklists realizados" :subtitulo="usinaDlg?.nome" icone="✓" cor="var(--teal)" :largura="960">
+      <div v-if="usinaDlg" class="ck-dlg-st">
+        <span>Status em {{ MES_TXT }}</span>
+        <span class="lx-pill" :style="{ '--c': status(usinaDlg.id).cor }"><i></i>{{ status(usinaDlg.id).txt }}</span>
+      </div>
+      <p v-if="!checksDlg.length" class="lx-empty">Nenhum checklist para essa usina.</p>
+      <div v-else class="lx-tbl-wrap">
+        <table class="lx-tbl">
+          <thead><tr><th>Mês</th><th class="c">Placas</th><th class="c">Inversor</th><th class="c">Wi-Fi</th><th>Comentário</th><th class="c">Ações</th></tr></thead>
+          <tbody>
+            <tr v-for="c in checksDlg" :key="c.id">
+              <td class="lx-mono">{{ mesAno(c.data) }}</td>
+              <td class="c"><span class="lx-pill" :style="{ '--c': sit(c.sitPlaca).c }">{{ sit(c.sitPlaca).txt }}</span></td>
+              <td class="c"><span class="lx-pill" :style="{ '--c': sit(c.sitInversor).c }">{{ sit(c.sitInversor).txt }}</span></td>
+              <td class="c"><span class="lx-pill" :style="{ '--c': sit(c.sitRoteador).c }">{{ sit(c.sitRoteador).txt }}</span></td>
+              <td class="ck-com">{{ c.comentario || '—' }}</td>
+              <td class="c">
+                <button class="lx-icon-btn" style="--c:var(--red)" title="Excluir checklist" aria-label="Excluir checklist" :disabled="excluindo === c.id" @click="deleteCheck(c)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <template #rodape>
+        <button class="lx-btn-ghost" @click="dialog = false">Fechar</button>
+      </template>
+    </LxDialog>
   </div>
-  
-  <v-divider></v-divider> 
-  <br> 
-
-  
-  <!--LISTAR USINAS-->
-  <v-expansion-panels>
-      <v-expansion-panel>
-        <v-expansion-panel-title>Informações Individuais</v-expansion-panel-title>
-          <v-expansion-panel-text>
-            <v-row justify="space-around" class="mb-2">
-                    <v-col cols="auto">
-                        <v-chip-group mandatory v-model="cateSelecionada" selected-class="text-primary">
-                          <v-chip value="NOVO">Novo</v-chip>
-                          <v-chip value="REALIZADOS">Realizados</v-chip> 
-                        </v-chip-group>
-                    </v-col>
-                  </v-row>
-
-                  <v-row v-if="cateSelecionada == 'NOVO'">
-                    <v-col v-if="showAlertCampo" cols="12">
-                        <v-alert  type="error">
-                            Preencha todos os campos antes de enviar o CheckList!
-                        </v-alert>
-                    </v-col>
-                    <v-col v-if="showAlertError" cols="12">
-                        <v-alert  type="error">
-                            Erro ao enviar CheckList!
-                        </v-alert>
-                    </v-col>
-                    <v-col v-if="showAlertErrorMes" cols="12">
-                        <v-alert  type="warning">
-                            CheckList dessa usina já foi preenchido esse mês!
-                        </v-alert>
-                    </v-col>
-                    <v-col v-if="showAlertSuccess" cols="12">
-                        <v-alert type="success">
-                            CheckList enviado com sucesso!
-                        </v-alert>
-                    </v-col>
-
-                    <v-col cols="12">
-                        <v-label class="font-weight-bold mb-1">Usina</v-label>
-                        <v-select v-model="predioSelect" :items="array" item-title="nome" item-value="id" label="Prédio"  return-object color="primary" required></v-select>
-                    </v-col>
-
-                    <v-col cols="12">
-                        <v-label class="font-weight-bold mb-1">Situação da Placa: </v-label>
-                        <v-container fluid> 
-                            <v-radio-group v-model="sitPlaca" inline>
-                                <v-radio label="Ótimo" value="O"></v-radio>
-                                <v-radio label="Bom" value="B"></v-radio>
-                                <v-radio label="Ruim" value="R"></v-radio>
-                                <v-radio label="Quebrado" value="Q"></v-radio>
-                                <v-radio label="Manutenção" value="M"></v-radio>
-                            </v-radio-group>
-                        </v-container>
-                    </v-col>
-
-                    <v-col cols="12">
-                        <v-label class="font-weight-bold mb-1">Situação do Inversor: </v-label>
-                        <v-container fluid> 
-                            <v-radio-group v-model="sitInversor" inline>
-                                <v-radio label="Ótimo" value="O"></v-radio>
-                                <v-radio label="Bom" value="B"></v-radio>
-                                <v-radio label="Ruim" value="R"></v-radio>
-                                <v-radio label="Quebrado" value="Q"></v-radio>
-                                <v-radio label="Manutenção" value="M"></v-radio>
-                            </v-radio-group>
-                        </v-container>
-                    </v-col>
-
-                    <v-col cols="12">
-                        <v-label class="font-weight-bold mb-1">Situação da sinal WIFI: </v-label>
-                        <v-container fluid> 
-                            <v-radio-group v-model="sitRoteador" inline>
-                                <v-radio label="Ótimo" value="O"></v-radio>
-                                <v-radio label="Bom" value="B"></v-radio>
-                                <v-radio label="Ruim" value="R"></v-radio>
-                                <v-radio label="Quebrado" value="Q"></v-radio>
-                                <v-radio label="Manutenção" value="M"></v-radio>
-                            </v-radio-group>
-                        </v-container>
-                    </v-col>
-
-                    <v-col cols="12">
-                        <v-label class="font-weight-bold mb-1">Comentário: </v-label>
-                        <v-text-field v-model="checkComentario"></v-text-field>
-                    </v-col>
-
-                    <v-col class="text-right" cols="12">
-                        <v-btn class="bg-primary" @click="enviarCheck">
-                            Enviar
-                        </v-btn>
-                    </v-col>
-                  </v-row>
-
-                  <v-row v-if="cateSelecionada == 'REALIZADOS'" justify="space-around">
-                    <v-table style="width: 100vw;">
-                        <thead>
-                        <tr>
-                            <th class="text-center">ID</th>
-                            <th class="text-center">UC</th>
-                            <th class="text-center">Nome</th> 
-                            <th class="text-center">CheckLists</th> 
-                            <th class="text-center">Status</th>
-                            <th class="text-center">Operações</th>
-                        </tr>
-                        </thead>
-                        <tbody>
-                        <tr v-for="usina in usinas" :key="usina.id" class="text-center"> 
-                            <td>{{ usina.id }}</td>
-                            <td class="text-center">{{ usina.uc }}</td>
-                            <td>{{ usina.nome.toUpperCase() }}</td> 
-                            <td>{{ qtdChecks(usina.id) }}</td>
-                            <td>
-                                <v-chip :color="verificarStatus(usina.id) == 'ÓTIMO'? 'success': verificarStatus(usina.id) == 'BOM'? 'primary': verificarStatus(usina.id) == 'VERIFICAR'? 'warning':''" variant="flat">
-                                   {{ verificarStatus(usina.id)}}
-                                </v-chip>
-                            </td>
-                            <td class="text-center"> 
-                                <v-btn size="40" icon class="bg-primary mr-5" @click="openDialog(usina.id)">
-                                  <v-avatar size="30" class="text-white">
-                                      <EditIcon size="20" />
-                                  </v-avatar>
-                                  <v-tooltip activator="parent" location="bottom"
-                                      >Verificar checklists
-                                  </v-tooltip>
-                                </v-btn> 
-                            </td>
-                        </tr>
-                        </tbody>
-                    </v-table>
-                  </v-row>
-          </v-expansion-panel-text>
-        </v-expansion-panel>
-      </v-expansion-panels>
-
-      <v-dialog v-model="dialogListCheckLists" width="1024">
-        <v-card>
-        <v-card-title style="background: linear-gradient(to bottom, #4d7fff, #1e73be); color: white;">
-          <span class="text-h5">Informações dos CheckLists</span>
-        </v-card-title>
-        <v-card-text>
-          <v-container>
-            <v-row>
-              <v-col cols="12">
-                <strong>Usina: </strong>
-                <span style="font-size: 20px;">{{ dadosUsina.nome }}</span>
-              </v-col>
-              <v-divider></v-divider>
-              
-              <v-col cols="12" class="text-center">
-                <v-chip style="font-size: 20px; padding: 20px;" :color="verificarStatus(dadosUsina.id) == 'ÓTIMO'? 'success': verificarStatus(dadosUsina.id) == 'BOM'? 'primary': verificarStatus(dadosUsina.id) == 'VERIFICAR'? 'warning':''" variant="flat">
-                    {{ verificarStatus(dadosUsina.id)}}
-                </v-chip>
-              </v-col>
-              
-              <v-divider></v-divider>
-              <v-col cols="12" class="text-center">
-                    <strong style="font-size: 20px">TABELA DE CHECKLISTS REALIZADOS</strong>
-                    <v-table class="mt-3">
-                        <thead>
-                            <tr>
-                                <th class="header-cell text-center">ID</th>
-                                <th class="header-cell text-center">Placa</th>
-                                <th class="header-cell text-center">Inversor</th>
-                                <th class="header-cell text-center">Roteador</th>
-                                <th class="header-cell text-center">Comentário</th>
-                                <th class="header-cell text-center">Data</th>
-                                <th class="header-cell text-center">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="check in dadosCheck" :key="check">
-                                <td>{{ check.id }}</td> 
-                                <td>
-                                  <v-chip :color="getStatusColorClass(check.sitPlaca)" variant="flat">
-                                      {{ getStatusLabel(check.sitPlaca)}}
-                                  </v-chip>
-                                </td>
-                                <td>
-                                  <v-chip :color="getStatusColorClass(check.sitInversor)" variant="flat">
-                                      {{ getStatusLabel(check.sitInversor)}}
-                                  </v-chip>
-                                </td>
-                                <td>
-                                  <v-chip :color="getStatusColorClass(check.sitRoteador)" variant="flat">
-                                      {{ getStatusLabel(check.sitRoteador)}}
-                                  </v-chip>
-                                </td>
-                                <td>{{ check.comentario }}</td>
-                                <td>{{ formatarMesAno(check.data) }}</td>
-                                <td>
-                                  <v-col>
-                                    <v-btn @click="deleteCheck(check.id)" size="30" icon class="bg-error mr-2">
-                                        <v-avatar size="30" class="text-white">
-                                            <TrashIcon size="18" />
-                                        </v-avatar>
-                                        <v-tooltip activator="parent" location="bottom">Excluir CheckList</v-tooltip>
-                                    </v-btn>
-                                  </v-col>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </v-table>
-              </v-col> 
-            </v-row>
-          </v-container>
-        </v-card-text>
-      </v-card>
-    </v-dialog>
 </template>
 
 <style scoped>
-.custom-select {
-    width: 100%;
-    padding: 10px;
-    border: 1px solid #ced4da;
-    border-radius: 5px;
-    font-size: 16px;
-    color: #495057;
-    background-color: #fff;
-    background-image: none;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-    transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
-  }
-
-  .custom-select:focus {
-    border-color: #80bdff;
-    outline: 0;
-    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
-  }
-
-  .custom-btn {
-    margin-left: 15px;
-  }
-
-  .button-container {
-    display: flex;
-    align-items: center;
-  }
-
-  .bordered td {
-    border: 1px solid #ddd;
-    padding: 8px;
-    text-align: center;
-    width: 100vw;
-  }
-
-  .header-cell { 
-  padding: 8px;
-  background: linear-gradient(to bottom, #4d7fff, #1e73be);
-  color: white;
-  font-weight: bold;
-}
+.ck-abas { margin-bottom: 14px; }
+.ck-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ck-acts { display: flex; gap: 6px; justify-content: center; }
+.ck-link { color: var(--tx); text-decoration: none; font-weight: 600; }
+.ck-link:hover { color: var(--teal); }
+.ck-load { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 28px 12px; color: var(--mut); font-size: 13px; }
+.ck-spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--teal); animation: ckSpin .8s linear infinite; flex: none; }
+@keyframes ckSpin { to { transform: rotate(1turn); } }
+.ck-warn { font-size: 11.5px; color: var(--orange); }
+.ck-ft { display: flex; justify-content: flex-end; gap: 10px; padding-top: 14px; margin-top: 4px; border-top: 1px solid var(--line2); flex-wrap: wrap; }
+.lx-field.inv .lx-input, .lx-field.inv .lx-seg { border-color: var(--red); }
+.lx-field.inv > label { color: var(--red); }
+textarea.lx-input { resize: vertical; min-height: 80px; }
+.ck-com { min-width: 220px; color: var(--mut); white-space: normal; }
+.ck-dlg-st { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; margin-bottom: 14px; border-radius: 14px; background: rgba(255, 255, 255, .04); font-size: 13px; color: var(--mut); }
+@media (max-width: 640px) { .ck-tools, .ck-tools .lx-search { width: 100%; } }
 </style>

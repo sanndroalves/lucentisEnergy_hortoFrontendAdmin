@@ -1,4 +1,5 @@
 <script setup>
+  import { carregarTarifas, tarifaKwh } from '~/composables/useTarifas';
 import { useHead  } from '@vueuse/head';
 import { API_BASE_URL } from '~/base/link';
 import * as XLSX from "xlsx";
@@ -129,6 +130,7 @@ const usinas = ref(0)
   const { data: relatorios } = await useFetch(`${API_BASE_URL}/relatoriocompensacao`); 
   const { data: relatorio_usinas } = await useFetch(`${API_BASE_URL}/relatoriousina`);
   const { data: usinas_conclusivo } = await useFetch(`${API_BASE_URL}/usina/`);
+  await carregarTarifas();
 
   const mesAnoSelecionado = ref(null)
   const dialogRelatorioPDF = ref(false)
@@ -161,7 +163,8 @@ const usinas = ref(0)
   const usinas_desempenho = ref([]);
   const projecao_geracao = ref(0);
 
-  const abrirDialog = () =>{ 
+  const abrirDialog = async () =>{ 
+    await carregarTarifas();
     dialogRelatorioPDF.value = true
     const [ano, mes] = mesAnoSelecionado.value.split('-')
     periodo_ano.value = Number(ano)
@@ -211,10 +214,12 @@ const usinas = ref(0)
   const calcularTaxaAutossuficienciaPredios = (ano, mes) => { const consumoMedioUsinas = buscarConsumoMedio(); const consumoMedioUnidadesPredios = somarConsumoPorMesAnoEspecial(ano, mes); const energia_compensadaPredios = calcularEnergiaCompensadaPredios(ano, mes); const totalCompensado = energia_compensadaPredios + (geracao_total.value - energia_injetada.value); const totalConsumo = consumoMedioUnidadesPredios + consumoMedioUsinas; const taxaAutossuficiencia = (totalCompensado / totalConsumo) * 100; return Number(taxaAutossuficiencia.toFixed(2)) }
   const calcularEnergiaIP = (ano, mes) => { if (!relatorios.value || !unidades.value) return { consumoTotal: 0, energiaCompensada: 0 }; const filtrados = relatorios.value.filter(item => item.ano === ano && item.mes === mes); const filtradosSecretaria = filtrados.filter(item => { const unidade = unidades.value.find(u => u.id === item.idUnidadeCompensa); return unidade && ['I', 'P'].includes(unidade.secretaria) && (unidade.uc) !== 12877638 }); const consumoTotal = filtradosSecretaria.reduce((acc, item) => acc + Number(item.consumokWh || 0), 0); const energiaCompensada = filtradosSecretaria.reduce((acc, item) => acc + Number(item.enerInjTUSD || 0), 0); return { consumoTotal: Number(consumoTotal.toFixed(2)), energiaCompensada: Number(energiaCompensada.toFixed(2)) } }
   const calcularTaxaAutossuficienciaIP = (ano, mes) => { const dadosUnidades = calcularEnergiaIP(ano, mes); const totalCompensado = dadosUnidades.energiaCompensada; const totalConsumo = dadosUnidades.consumoTotal; const taxaAutossuficiencia = (totalCompensado / totalConsumo) * 100; return Number(taxaAutossuficiencia.toFixed(2)) }
-  const TARIFA_BT = 0.88;
-  const MT_TARIFAS = { TUSD_ponta: 1.66642019, TE_ponta: 0.57222160, TUSD_forap: 0.14734841, TE_forap: 0.34908095 };
-  function tarifaMediaMTParaUsina(idUsina) { const minima = Number(MT_TARIFAS.TUSD_forap || 0) + Number(MT_TARIFAS.TE_forap || 0); const maxima = Number(MT_TARIFAS.TUSD_ponta || 0) + Number(MT_TARIFAS.TE_ponta || 0); return (minima + maxima) / 2; }
-  const calcularCustoAutoconsumoMes = (ano, mes) => { let total = 0; (usinas.value || []).forEach(u => { const geraMes = geracoes.value.find(r => r.idGeradora === u.id && r.mes === mes && r.ano === ano); const injeMes = relatorio_usinas.value.filter(r => r.idGeradora === u.id && r.mes === mes && r.ano === ano).reduce((s, r) => s + Number(r.injetadoFPonta || 0) + Number(r.injetadoPonta || 0), 0); let autoconsumo_kWh = Number(geraMes?.geracao || 0) - Number(injeMes || 0); autoconsumo_kWh = autoconsumo_kWh > 0 ? autoconsumo_kWh : 0; let tarifa_RpkWh = 0; if ((u.tensao || '').toUpperCase() === 'BT') { tarifa_RpkWh = TARIFA_BT; } else { tarifa_RpkWh = tarifaMediaMTParaUsina(u.id); } const custo_evitado_R$ = autoconsumo_kWh * tarifa_RpkWh; total += custo_evitado_R$; }); (usinas_conclusivo.value || []).filter(u => u.id === 19 || u.id === 20).forEach(u => { const geraMes = geracoes.value.find(r => r.idGeradora === u.id && r.mes === mes && r.ano === ano); let autoconsumo_kWh = Number(geraMes?.geracao || 0); autoconsumo_kWh = autoconsumo_kWh > 0 ? autoconsumo_kWh : 0; let tarifa_RpkWh = 0; if ((u.tensao || '').toUpperCase() === 'BT') { tarifa_RpkWh = TARIFA_BT; } else { tarifa_RpkWh = tarifaMediaMTParaUsina(u.id); } const custo_evitado_R$ = autoconsumo_kWh * tarifa_RpkWh; total += custo_evitado_R$; }); return total; };
+  // Tarifas por período: Gerenciamento › Parâmetros (composables/useTarifas.ts).
+  // BT = valor do período; MT = ((TUSD_fp + TE_fp) + (TUSD_p + TE_p)) / 2 do período.
+  // Mês sem período cadastrado → tarifa padrão (0,88 BT e os componentes MT antigos).
+  const tarifaBTMes = (ano, mes) => tarifaKwh('BT', ano, mes);
+  const tarifaMTMes = (ano, mes) => tarifaKwh('MT', ano, mes);
+  const calcularCustoAutoconsumoMes = (ano, mes) => { let total = 0; (usinas.value || []).forEach(u => { const geraMes = geracoes.value.find(r => r.idGeradora === u.id && r.mes === mes && r.ano === ano); const injeMes = relatorio_usinas.value.filter(r => r.idGeradora === u.id && r.mes === mes && r.ano === ano).reduce((s, r) => s + Number(r.injetadoFPonta || 0) + Number(r.injetadoPonta || 0), 0); let autoconsumo_kWh = Number(geraMes?.geracao || 0) - Number(injeMes || 0); autoconsumo_kWh = autoconsumo_kWh > 0 ? autoconsumo_kWh : 0; let tarifa_RpkWh = 0; if ((u.tensao || '').toUpperCase() === 'BT') { tarifa_RpkWh = tarifaBTMes(ano, mes); } else { tarifa_RpkWh = tarifaMTMes(ano, mes); } const custo_evitado_R$ = autoconsumo_kWh * tarifa_RpkWh; total += custo_evitado_R$; }); (usinas_conclusivo.value || []).filter(u => u.id === 19 || u.id === 20).forEach(u => { const geraMes = geracoes.value.find(r => r.idGeradora === u.id && r.mes === mes && r.ano === ano); let autoconsumo_kWh = Number(geraMes?.geracao || 0); autoconsumo_kWh = autoconsumo_kWh > 0 ? autoconsumo_kWh : 0; let tarifa_RpkWh = 0; if ((u.tensao || '').toUpperCase() === 'BT') { tarifa_RpkWh = tarifaBTMes(ano, mes); } else { tarifa_RpkWh = tarifaMTMes(ano, mes); } const custo_evitado_R$ = autoconsumo_kWh * tarifa_RpkWh; total += custo_evitado_R$; }); return total; };
   const calcularCustoEvitadoTodosMeses = () => { const resultados = []; const chaves = new Set([...geracoes.value.map(g => `${g.ano}-${g.mes}`), ...relatorio_usinas.value.map(r => `${r.ano}-${r.mes}`)]); for (const chave of chaves) { const [ano, mes] = chave.split("-").map(Number); const economia_total = somarEconomiaPorMesAno(Number(ano), Number(mes)); const resultado = calcularCustoAutoconsumoMes(Number(ano), Number(mes)); const custo_autoconsumo_total = Number(resultado || 0); const custo_evitado_total = (Number(custo_autoconsumo_total) + Number(economia_total)).toFixed(2); resultados.push({ ano, mes, custo_evitado_total }); } return resultados.sort((a, b) => a.ano - b.ano || a.mes - b.mes); }
   const totalInvestido = ref(Number(8854468.32) + Number(8005328.88) + Number(7021350.76));
   const somarEconomiaMeses = (ano, mes) => { const resultados = calcularCustoEvitadoTodosMeses(); const resultadosFiltrados = resultados.filter(item => item.ano < ano || (item.ano === ano && item.mes <= mes)); return resultadosFiltrados.reduce((acc, item) => acc + Number(item.custo_evitado_total || 0), 0); };
@@ -253,128 +258,68 @@ const usinas = ref(0)
   <div class="cl-root">
 
     <!-- ══════════════════════════════════════════════════
-         PÁGINA PRINCIPAL — EXPORTAÇÕES
+         PÁGINA PRINCIPAL — EXPORTAÇÕES (cards no padrão LUCENTIS)
     ══════════════════════════════════════════════════ -->
-    <div class="cl-header">
-      <div class="cl-header-icon">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round">
-          <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/>
-          <rect x="9" y="3" width="6" height="4" rx="1"/>
-          <path d="M9 12l2 2 4-4"/>
-        </svg>
-      </div>
-      <div>
-        <p class="cl-header-eyebrow">Gerenciamento · Relatórios</p>
-        <h1 class="cl-header-title">Relatório Conclusivo</h1>
-        <p class="cl-header-sub">Exportações e geração do relatório oficial de desempenho energético</p>
-      </div>
-    </div>
-
-    <!-- Cards de exportação -->
-    <div class="cl-export-grid">
-
-      <div class="cl-export-card">
-        <div class="cl-export-icon" style="background:#ECFDF5;color:#059669">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
-        </div>
-        <div class="cl-export-txt">
-          <span class="cl-export-title">Dados Prédios</span>
-          <span class="cl-export-desc">UC + média consumo + saldo (Educação, Saúde, Outros)</span>
-        </div>
-        <button class="cl-export-btn cl-btn-green" @click="exportarParaExcel('PREDIO')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Exportar .xlsx
-        </button>
-      </div>
-
-      <div class="cl-export-card">
-        <div class="cl-export-icon" style="background:#EEF2FF;color:#4F46E5">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/></svg>
-        </div>
-        <div class="cl-export-txt">
-          <span class="cl-export-title">Dados CIP</span>
-          <span class="cl-export-desc">UC + média consumo + saldo (Iluminação Pública e Praças)</span>
-        </div>
-        <button class="cl-export-btn cl-btn-indigo" @click="exportarParaExcel('IP')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Exportar .xlsx
-        </button>
-      </div>
-
-      <div class="cl-export-card">
-        <div class="cl-export-icon" style="background:#FFFBEB;color:#D97706">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-        </div>
-        <div class="cl-export-txt">
-          <span class="cl-export-title">Consumo 6 Meses — Prédios</span>
-          <span class="cl-export-desc">Histórico mensal, variação e alertas de consumo</span>
-        </div>
-        <button class="cl-export-btn cl-btn-amber" @click="extrairEExportar6meses('PREDIO')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Exportar .xlsx
-        </button>
-      </div>
-
-      <div class="cl-export-card">
-        <div class="cl-export-icon" style="background:#FFF1F2;color:#E11D48">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
-        </div>
-        <div class="cl-export-txt">
-          <span class="cl-export-title">Consumo 6 Meses — IP</span>
-          <span class="cl-export-desc">Histórico mensal, variação e alertas de iluminação pública</span>
-        </div>
-        <button class="cl-export-btn cl-btn-rose" @click="extrairEExportar6meses('IP')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Exportar .xlsx
-        </button>
-      </div>
-
-      <div class="cl-export-card">
-        <div class="cl-export-icon" style="background:#F5F3FF;color:#7C3AED">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
-        </div>
-        <div class="cl-export-txt">
-          <span class="cl-export-title">Dados Compensados</span>
-          <span class="cl-export-desc">Energia e valor compensado consolidado por mês/ano</span>
-        </div>
-        <button class="cl-export-btn cl-btn-violet" @click="exportarParaExcel2()">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Exportar .xlsx
-        </button>
-      </div>
-
-    </div>
 
     <!-- Gerador do relatório conclusivo -->
-    <div class="cl-conclusivo-gen">
-      <div class="cl-conclusivo-gen-left">
-        <div class="cl-conclusivo-gen-icon">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round">
-            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-          </svg>
-        </div>
+    <section class="cl-gen">
+      <div class="cl-gen-l">
+        <span class="lx-ic cl-gen-ic" style="--c:var(--purple)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15l2 2 4-4"/></svg>
+        </span>
         <div>
-          <h3 class="cl-conclusivo-gen-title">Relatório Conclusivo Oficial</h3>
-          <p class="cl-conclusivo-gen-sub">Selecione o período e gere o relatório para envio à prefeitura</p>
+          <h3>Relatório Conclusivo Oficial</h3>
+          <p>Selecione o período e gere o relatório para envio à prefeitura</p>
         </div>
       </div>
-      <div class="cl-conclusivo-gen-right">
-        <div class="cl-month-wrap">
-          <label class="cl-month-label">Período de referência</label>
-          <input type="month" v-model="mesAnoSelecionado" class="cl-month-input" />
+      <div class="cl-gen-r">
+        <div class="lx-field">
+          <label for="cl-mes">Período de referência</label>
+          <input id="cl-mes" v-model="mesAnoSelecionado" type="month" class="lx-input cl-gen-mes" />
         </div>
-        <button class="cl-btn-conclusivo" :disabled="!mesAnoSelecionado" @click="abrirDialog()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-            <line x1="16" y1="13" x2="8" y2="13"/>
-            <line x1="16" y1="17" x2="8" y2="17"/>
-          </svg>
-          Gerar Conclusivo
+        <button class="lx-btn" style="--c1:var(--purple);--c2:var(--teal)" :disabled="!mesAnoSelecionado" @click="abrirDialog()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          Gerar conclusivo
         </button>
       </div>
-    </div>
+    </section>
+
+    <!-- Cards de exportação -->
+    <section class="lx-panel">
+      <div class="lx-panel-hd">
+        <div>
+          <h3><span class="lx-ic" style="--c:var(--green)">⇩</span>Exportações em planilha</h3>
+          <p>Arquivos .xlsx gerados com os dados atuais do sistema</p>
+        </div>
+      </div>
+      <div class="cl-xgrid">
+        <article class="cl-xc" style="--c:var(--green)">
+          <span class="cl-xc-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg></span>
+          <div class="cl-xc-tx"><strong>Dados Prédios</strong><span>UC + média de consumo + saldo (Educação, Saúde, Outros)</span></div>
+          <button class="lx-btn-ghost sm" style="--c:var(--green)" @click="exportarParaExcel('PREDIO')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>.xlsx</button>
+        </article>
+        <article class="cl-xc" style="--c:var(--teal)">
+          <span class="cl-xc-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/></svg></span>
+          <div class="cl-xc-tx"><strong>Dados CIP</strong><span>UC + média de consumo + saldo (Iluminação Pública e Praças)</span></div>
+          <button class="lx-btn-ghost sm" style="--c:var(--teal)" @click="exportarParaExcel('IP')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>.xlsx</button>
+        </article>
+        <article class="cl-xc" style="--c:var(--orange)">
+          <span class="cl-xc-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></span>
+          <div class="cl-xc-tx"><strong>Consumo 6 meses · Prédios</strong><span>Histórico mensal, variação e alertas de consumo</span></div>
+          <button class="lx-btn-ghost sm" style="--c:var(--orange)" @click="extrairEExportar6meses('PREDIO')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>.xlsx</button>
+        </article>
+        <article class="cl-xc" style="--c:var(--red)">
+          <span class="cl-xc-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></span>
+          <div class="cl-xc-tx"><strong>Consumo 6 meses · IP</strong><span>Histórico mensal, variação e alertas da iluminação pública</span></div>
+          <button class="lx-btn-ghost sm" style="--c:var(--red)" @click="extrairEExportar6meses('IP')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>.xlsx</button>
+        </article>
+        <article class="cl-xc" style="--c:var(--purple)">
+          <span class="cl-xc-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/></svg></span>
+          <div class="cl-xc-tx"><strong>Dados Compensados</strong><span>Energia e valor compensado consolidado por mês/ano</span></div>
+          <button class="lx-btn-ghost sm" style="--c:var(--purple)" @click="exportarParaExcel2()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>.xlsx</button>
+        </article>
+      </div>
+    </section>
 
     <!-- ══════════════════════════════════════════════════
          DIALOG — RELATÓRIO OFICIAL PDF
@@ -816,120 +761,39 @@ const usinas = ref(0)
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=DM+Mono:wght@400;500&display=swap');
 
 /* ════════════════════════════════════════════
-   ROOT DA PÁGINA
+   ROOT + CARDS DA PÁGINA (padrão LUCENTIS dark;
+   usa os tokens de scss/_lucentis-dark.scss)
 ════════════════════════════════════════════ */
-.cl-root {
-  min-height: 100vh !important;
-  background: #F0FDF9 !important;
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important;
-  color: #0f172a !important;
-  padding: 0 0 40px !important;
-}
+.cl-root { color: var(--tx); font-family: var(--font); display: grid; gap: 16px; }
+.cl-root * { box-sizing: border-box; }
+.cl-root h3, .cl-root p { margin: 0; }
 
-/* ════════════════════════════════════════════
-   HEADER DA PÁGINA
-════════════════════════════════════════════ */
-.cl-header {
-  background: linear-gradient(135deg, #ECFDF5 0%, #EEF2FF 100%) !important;
-  border-bottom: 1px solid #E2E8F0 !important;
-  padding: 24px 28px 20px !important;
-  margin-bottom: 28px !important;
-  display: flex !important;
-  align-items: center !important;
-  gap: 16px !important;
+.cl-gen {
+  position: relative; overflow: hidden; display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;
+  padding: 20px 22px; border-radius: 20px; border: 1px solid rgba(168, 85, 247, .45);
+  background: radial-gradient(circle at 0% 0%, rgba(168, 85, 247, .28), transparent 55%), radial-gradient(circle at 100% 100%, rgba(34, 197, 224, .2), transparent 55%), var(--card);
+  box-shadow: 0 0 44px -18px var(--purple);
 }
-.cl-header-icon {
-  width: 50px !important; height: 50px !important;
-  background: #059669 !important; border-radius: 14px !important;
-  display: flex !important; align-items: center !important; justify-content: center !important;
-  box-shadow: 0 4px 14px rgba(5,150,105,.3) !important; flex-shrink: 0 !important;
-}
-.cl-header-eyebrow { font-size: 11px !important; color: #94A3B8 !important; margin: 0 0 2px !important; }
-.cl-header-title { font-size: 26px !important; font-weight: 900 !important; letter-spacing: -.03em !important; color: #0f172a !important; margin: 0 0 3px !important; }
-.cl-header-sub { font-size: 13px !important; color: #64748b !important; margin: 0 !important; }
+.cl-gen-l { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.cl-gen-ic { width: 46px; height: 46px; border-radius: 14px; }
+.cl-gen h3 { font-size: 17px; font-weight: 700; }
+.cl-gen p { font-size: 12.5px; color: var(--mut); margin-top: 3px; }
+.cl-gen-r { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.cl-gen-mes { min-width: 190px; }
 
-/* ════════════════════════════════════════════
-   EXPORT GRID
-════════════════════════════════════════════ */
-.cl-export-grid {
-  display: grid !important;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)) !important;
-  gap: 14px !important;
-  padding: 0 28px !important;
-  margin-bottom: 24px !important;
+.cl-xgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.cl-xc {
+  --c: var(--teal);
+  position: relative; overflow: hidden; display: flex; align-items: center; gap: 12px; padding: 14px 14px 14px 16px;
+  background: var(--card2); border: 1px solid var(--line); border-radius: 16px; transition: transform .2s, border-color .2s, box-shadow .2s;
 }
-.cl-export-card {
-  background: #ffffff !important; border: 1px solid #E2E8F0 !important;
-  border-radius: 14px !important; padding: 18px 20px !important;
-  display: flex !important; align-items: center !important; gap: 14px !important;
-  box-shadow: 0 1px 4px rgba(0,0,0,.05) !important;
-  transition: box-shadow .18s, transform .18s !important;
-}
-.cl-export-card:hover { box-shadow: 0 6px 20px rgba(0,0,0,.09) !important; transform: translateY(-2px) !important; }
-.cl-export-icon {
-  width: 44px !important; height: 44px !important; border-radius: 12px !important;
-  display: flex !important; align-items: center !important; justify-content: center !important; flex-shrink: 0 !important;
-}
-.cl-export-txt { display: flex !important; flex-direction: column !important; flex: 1 !important; gap: 2px !important; }
-.cl-export-title { font-size: 14px !important; font-weight: 800 !important; color: #0f172a !important; }
-.cl-export-desc { font-size: 11px !important; color: #64748b !important; }
-.cl-export-btn {
-  display: flex !important; align-items: center !important; gap: 6px !important;
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important;
-  font-size: 11px !important; font-weight: 800 !important;
-  padding: 8px 14px !important; border-radius: 9px !important; border: none !important;
-  cursor: pointer !important; white-space: nowrap !important; flex-shrink: 0 !important;
-  transition: filter .14s !important;
-}
-.cl-export-btn:hover { filter: brightness(1.08) !important; }
-.cl-export-btn svg { stroke: #ffffff !important; }
-.cl-btn-green  { background: #059669 !important; color: #fff !important; box-shadow: 0 2px 8px rgba(5,150,105,.3) !important; }
-.cl-btn-indigo { background: #4F46E5 !important; color: #fff !important; box-shadow: 0 2px 8px rgba(79,70,229,.3) !important; }
-.cl-btn-amber  { background: #D97706 !important; color: #fff !important; box-shadow: 0 2px 8px rgba(217,119,6,.3) !important; }
-.cl-btn-rose   { background: #E11D48 !important; color: #fff !important; box-shadow: 0 2px 8px rgba(225,29,72,.3) !important; }
-.cl-btn-violet { background: #7C3AED !important; color: #fff !important; box-shadow: 0 2px 8px rgba(124,58,237,.3) !important; }
-
-/* ════════════════════════════════════════════
-   GERADOR DO CONCLUSIVO
-════════════════════════════════════════════ */
-.cl-conclusivo-gen {
-  margin: 0 28px 8px !important;
-  background: linear-gradient(135deg, #0f172a, #1e3a5f) !important;
-  border-radius: 16px !important; padding: 24px 28px !important;
-  display: flex !important; align-items: center !important; justify-content: space-between !important;
-  gap: 20px !important; flex-wrap: wrap !important;
-  box-shadow: 0 8px 32px rgba(15,23,42,.25) !important;
-}
-.cl-conclusivo-gen-left { display: flex !important; align-items: center !important; gap: 14px !important; }
-.cl-conclusivo-gen-icon {
-  width: 48px !important; height: 48px !important; border-radius: 13px !important;
-  background: rgba(255,255,255,.12) !important; display: flex !important; align-items: center !important; justify-content: center !important; flex-shrink: 0 !important;
-}
-.cl-conclusivo-gen-title { font-size: 18px !important; font-weight: 800 !important; color: #ffffff !important; margin: 0 0 3px !important; }
-.cl-conclusivo-gen-sub { font-size: 12px !important; color: rgba(255,255,255,.55) !important; margin: 0 !important; }
-.cl-conclusivo-gen-right { display: flex !important; align-items: center !important; gap: 12px !important; flex-wrap: wrap !important; }
-.cl-month-wrap { display: flex !important; flex-direction: column !important; gap: 4px !important; }
-.cl-month-label { font-size: 10px !important; font-weight: 700 !important; letter-spacing: .1em !important; text-transform: uppercase !important; color: rgba(255,255,255,.5) !important; }
-.cl-month-input {
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important;
-  font-size: 14px !important; font-weight: 700 !important;
-  padding: 9px 14px !important; border-radius: 10px !important;
-  border: 1.5px solid rgba(255,255,255,.2) !important;
-  background: rgba(255,255,255,.1) !important; color: #ffffff !important; outline: none !important;
-}
-.cl-month-input:focus { border-color: #059669 !important; }
-.cl-btn-conclusivo {
-  display: flex !important; align-items: center !important; gap: 8px !important;
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif !important;
-  font-size: 13px !important; font-weight: 800 !important;
-  background: #059669 !important; color: #ffffff !important;
-  border: none !important; border-radius: 11px !important; padding: 11px 24px !important;
-  cursor: pointer !important; box-shadow: 0 4px 14px rgba(5,150,105,.4) !important;
-  transition: all .14s !important;
-}
-.cl-btn-conclusivo:hover { background: #047857 !important; transform: translateY(-1px) !important; }
-.cl-btn-conclusivo:disabled { opacity: .4 !important; cursor: not-allowed !important; transform: none !important; }
-.cl-btn-conclusivo svg { stroke: #ffffff !important; }
+.cl-xc::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 3px; background: var(--c); box-shadow: 0 0 12px var(--c); }
+.cl-xc:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--c) 50%, transparent); box-shadow: 0 0 30px -14px var(--c); }
+.cl-xc-ic { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; flex: none; color: var(--c); background: color-mix(in srgb, var(--c) 15%, transparent); }
+.cl-xc-ic svg { width: 18px; height: 18px; }
+.cl-xc-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.cl-xc-tx strong { font-size: 13.5px; font-weight: 600; }
+.cl-xc-tx span { font-size: 11.5px; color: var(--mut); line-height: 1.4; }
 
 /* ════════════════════════════════════════════
    DIALOG SHELL
@@ -1226,8 +1090,8 @@ const usinas = ref(0)
    RESPONSIVO
 ════════════════════════════════════════════ */
 @media (max-width: 700px) {
-  .cl-export-grid { grid-template-columns: 1fr !important; padding: 0 16px !important; }
-  .cl-conclusivo-gen { margin: 0 16px 8px !important; flex-direction: column !important; align-items: flex-start !important; }
+  .cl-xgrid { grid-template-columns: 1fr; }
+  .cl-gen { flex-direction: column; align-items: flex-start; }
   .pdf-kpi-grid { grid-template-columns: 1fr 1fr !important; }
   .pdf-two-col { grid-template-columns: 1fr !important; }
   .pdf-rankings-grid { grid-template-columns: 1fr !important; }

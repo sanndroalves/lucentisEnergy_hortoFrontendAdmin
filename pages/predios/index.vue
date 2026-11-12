@@ -1,906 +1,654 @@
-<script setup >
-import { useHead  } from '@vueuse/head';
+<script setup>
+// UCs Públicas — página única para todas as unidades consumidoras da prefeitura
+// (Educação, Saúde, Outros, Iluminação pública e Praças). Antes eram duas
+// páginas (/predios e /iluminacao) com os mesmos serviços; /iluminacao agora
+// redireciona para cá já filtrada.
+import { ref, computed, watch } from 'vue';
+import { useHead } from '@vueuse/head';
 import { API_BASE_URL } from '~/base/link';
+import { MESES, MESES_CURTO, nf } from '~/composables/useRelatorios';
 
-useHead ({ title: 'Prédios Públicos' });
-definePageMeta({ middleware: 'sidebase-auth' })
+useHead({ title: 'UCs Públicas' });
+definePageMeta({ middleware: 'sidebase-auth' });
 
-import UiParentCard from '@/components/shared/UiParentCard.vue'; 
-import { ref } from 'vue';
-import { SearchIcon } from 'vue-tabler-icons';
+// ── catálogos ────────────────────────────────────────────────
+const SECS = [
+  { v: 'E', txt: 'Educação', desc: 'Escolas e CEIs', c: 'var(--green)', ic: '✎' },
+  { v: 'S', txt: 'Saúde', desc: 'UBS e postos', c: 'var(--teal)', ic: '✚' },
+  { v: 'O', txt: 'Outros', desc: 'Órgãos municipais', c: 'var(--orange)', ic: '⌂' },
+  { v: 'I', txt: 'Iluminação', desc: 'Iluminação pública', c: 'var(--red)', ic: '✦' },
+  { v: 'P', txt: 'Praças', desc: 'Espaços públicos', c: 'var(--purple)', ic: '❀' },
+];
+const STATUS = [
+  { v: 'L', txt: 'Ligados', um: 'Ligado', c: 'var(--green)' },
+  { v: 'D', txt: 'Desligados', um: 'Desligado', c: 'var(--red)' },
+  { v: 'M', txt: 'Manutenção', um: 'Manutenção', c: 'var(--orange)' },
+];
+const secDe = (v) => SECS.find(s => s.v === v) ?? { v, txt: 'Desconhecida', c: 'var(--mut)' };
+const statusDe = (v) => STATUS.find(s => s.v === v) ?? { v, um: 'Desconhecido', c: 'var(--mut)' };
+const ANOS_FORM = [2028, 2027, 2026, 2025, 2024, 2023];
 
-const { data: predios } = await useFetch(`${API_BASE_URL}/unidadecompensacao/`);
-const { data: usinas }  = await useFetch(`${API_BASE_URL}/usina/`);
+// ── dados (não bloqueiam a abertura da página) ───────────────
+const { data: unidadesRaw, pending: carregando, refresh: recarregarUnidades } = useLazyFetch(`${API_BASE_URL}/unidadecompensacao/`, { key: 'ucs-unidades', default: () => [] });
+const { data: usinasRaw } = useLazyFetch(`${API_BASE_URL}/usina/`, { key: 'ucs-usinas', default: () => [] });
+const { data: porcentagensRaw, refresh: recarregarPorcentagens } = useLazyFetch(`${API_BASE_URL}/porcentagem/`, { key: 'ucs-porcentagens', default: () => [] });
 
-const getStatusLabel = (status) => ({ L:'Ligado', D:'Desligado', M:'Manutenção' }[status] ?? 'Desconhecido');
-const getStatusSecretaria = (status) => ({ E:'Educação', S:'Saúde', O:'Outros' }[status] ?? 'Desconhecido');
-const getStatusColorClass = (status) => ({ E:'primary', S:'success', O:'warning' }[status] ?? 'error');
+const unidades = computed(() => unidadesRaw.value ?? []);
+const usinas = computed(() => usinasRaw.value ?? []);
+const usinaPorId = computed(() => new Map(usinas.value.map(u => [u.id, u])));
 
-const selecionado = ref(null);
-const categoriaSelecionada = (prediosNovo) => {
-  if (selecionado.value !== null) return prediosNovo.filter(p => p.secretaria === selecionado.value);
-  return predios.value;
+// ── resumo ────────────────────────────────────────────────────
+const resumo = computed(() => {
+  const r = { total: 0, sec: {}, status: {}, tensao: { BT: 0, MT: 0 } };
+  SECS.forEach(s => { r.sec[s.v] = 0; });
+  STATUS.forEach(s => { r.status[s.v] = { total: 0, sec: Object.fromEntries(SECS.map(x => [x.v, 0])) }; });
+  for (const u of unidades.value) {
+    r.total++;
+    if (u.secretaria in r.sec) r.sec[u.secretaria]++;
+    const st = r.status[u.status];
+    if (st) { st.total++; if (u.secretaria in st.sec) st.sec[u.secretaria]++; }
+    if (u.tensao === 'BT' || u.tensao === 'MT') r.tensao[u.tensao]++;
+  }
+  return r;
+});
+
+// ── filtros ───────────────────────────────────────────────────
+// ?sec=E ou ?sec=IP (vindo do antigo /iluminacao) já abre filtrado
+const router = useRouter();
+const secDaUrl = () => new Set(String(router.currentRoute.value.query.sec ?? '').split('').filter(c => SECS.some(s => s.v === c)));
+const fSec = ref(secDaUrl());
+watch(() => router.currentRoute.value.query.sec, () => { fSec.value = secDaUrl(); });
+const fStatus = ref('');
+const fTensao = ref('');
+const busca = ref('');
+
+const alternarSec = (v) => { const s = new Set(fSec.value); s.has(v) ? s.delete(v) : s.add(v); fSec.value = s; };
+const limparFiltros = () => { fSec.value = new Set(); fStatus.value = ''; fTensao.value = ''; busca.value = ''; };
+const temFiltro = computed(() => fSec.value.size || fStatus.value || fTensao.value || busca.value.trim());
+
+const sem = (t) => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const filtradas = computed(() => {
+  const q = sem(busca.value.trim());
+  return unidades.value.filter(u =>
+    (!fSec.value.size || fSec.value.has(u.secretaria)) &&
+    (!fStatus.value || u.status === fStatus.value) &&
+    (!fTensao.value || u.tensao === fTensao.value) &&
+    (!q || sem(u.uc).includes(q) || sem(u.nome).includes(q) || sem(u.endereco).includes(q)),
+  ).sort((a, b) => String(a.nome).localeCompare(String(b.nome), 'pt-BR'));
+});
+
+// paginação simples (são ~460 unidades)
+const POR_PAG = 40;
+const pagina = ref(1);
+const totalPags = computed(() => Math.max(1, Math.ceil(filtradas.value.length / POR_PAG)));
+const visiveis = computed(() => filtradas.value.slice((pagina.value - 1) * POR_PAG, pagina.value * POR_PAG));
+watch([fSec, fStatus, fTensao, busca], () => { pagina.value = 1; });
+
+// ── aviso rápido ──────────────────────────────────────────────
+const toast = ref(null);
+let toastT = 0;
+const avisar = (txt, erro = false) => { toast.value = { txt, erro }; clearTimeout(toastT); toastT = setTimeout(() => { toast.value = null; }, 3500); };
+
+// ── unidade atual dos dialogs ─────────────────────────────────
+const atual = ref(null);
+
+// ── porcentagens (geradoras) ──────────────────────────────────
+const dlgPorc = ref(false);
+const porcDaUnidade = computed(() => (porcentagensRaw.value ?? []).filter(p => p.idUnidadeCompensa === atual.value?.id));
+const porcAtivas = computed(() => porcDaUnidade.value.filter(p => !p.data_fim));
+const porcHist = computed(() => porcDaUnidade.value.filter(p => p.data_fim).sort((a, b) => String(b.data_fim).localeCompare(String(a.data_fim))));
+const somaAtivas = computed(() => porcAtivas.value.reduce((t, p) => t + Number(p.porcentagem || 0), 0));
+const formatarData = (d) => { if (!d) return ''; const [y, m] = String(d).split('-'); return `${m}/${y}`; };
+const abrirPorc = (u) => { atual.value = u; dlgPorc.value = true; };
+const excluirPorc = async (id) => {
+  if (!confirm('Remover esta porcentagem?')) return;
+  try { await $fetch(`${API_BASE_URL}/porcentagem/${id}`, { method: 'DELETE' }); await recarregarPorcentagens(); avisar('Porcentagem removida.'); }
+  catch (e) { console.error(e); avisar('Erro ao remover a porcentagem.', true); }
 };
 
-const { data: listaPorcento } = await useFetch(`${API_BASE_URL}/porcentagem/`);
-const procurarPorcentagem = (predioId) => listaPorcento.value.filter(p => p.idUnidadeCompensa === predioId);
-const procurarGeradora    = (geradoraId) => usinas.value.filter(u => u.id === geradoraId);
-
-const dialogOpen             = ref(false);
-const porcentagensAtivas     = ref([]);
-const porcentagensHistoricas = ref([]);
-const openDialog = (predioId) => {
-  const p = procurarPorcentagem(predioId);
-  porcentagensAtivas.value     = p.filter(x => !x.data_fim);
-  porcentagensHistoricas.value = p.filter(x => x.data_fim);
-  dialogOpen.value = true;
-};
-const formatarData = (data) => { if (!data) return ''; const d = new Date(data); return `${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`; };
-
-const dialogGeradora          = ref(false);
-const showErrorAlertGeracao   = ref(false);
-const showErrorCampoGeracao   = ref(false);
-const showSuccessAlertGeracao = ref(false);
-const selectedUsina           = ref('');
-const porcentagem             = ref('');
-const selectedPredio          = ref('');
-const ucUnidadeRela           = ref('');
-const nomeUnidadeRela         = ref('');
-
-const openDialogGeradora = async (predioId) => {
-  dialogGeradora.value = true;
-  showErrorCampoGeracao.value = false; showSuccessAlertGeracao.value = false;
-  selectedUsina.value = ''; porcentagem.value = '';
-  const { data: u } = await useFetch(`${API_BASE_URL}/unidadecompensacao/${predioId}`);
-  ucUnidadeRela.value = u.value.uc; nomeUnidadeRela.value = u.value.nome; selectedPredio.value = u.value.id;
-};
-const sendGeradora = async () => {
-  if (!selectedUsina.value || !porcentagem.value) { showErrorCampoGeracao.value = true; showSuccessAlertGeracao.value = false; return; }
+const dlgGeradora = ref(false);
+const fGer = ref({ usina: '', porcentagem: '' });
+const msgGer = ref(null);
+const salvandoGer = ref(false);
+const abrirGeradora = (u) => { atual.value = u; fGer.value = { usina: '', porcentagem: '' }; msgGer.value = null; dlgGeradora.value = true; };
+const salvarGeradora = async () => {
+  if (!fGer.value.usina || !fGer.value.porcentagem) { msgGer.value = { t: 'err', txt: 'Preencha a usina e a porcentagem.' }; return; }
+  salvandoGer.value = true;
   try {
-    const r = await useFetch(`${API_BASE_URL}/porcentagem/`, { method:'POST', body:{ idUnidadeCompensa:selectedPredio.value, idGeradora:selectedUsina.value, porcentagem:porcentagem.value }, key:'GeradoraPost' });
-    if (r) { showErrorCampoGeracao.value=false; showSuccessAlertGeracao.value=true; const { data:n } = await useFetch(`${API_BASE_URL}/porcentagem/`); listaPorcento.value=n._value; }
-    else { showErrorAlertGeracao.value=true; showErrorCampoGeracao.value=false; showSuccessAlertGeracao.value=false; }
-  } catch { showErrorAlertGeracao.value=true; showErrorCampoGeracao.value=false; showSuccessAlertGeracao.value=false; }
+    await $fetch(`${API_BASE_URL}/porcentagem/`, { method: 'POST', body: { idUnidadeCompensa: atual.value.id, idGeradora: fGer.value.usina, porcentagem: fGer.value.porcentagem } });
+    await recarregarPorcentagens();
+    msgGer.value = { t: 'ok', txt: 'Geradora adicionada com sucesso.' };
+    fGer.value = { usina: '', porcentagem: '' };
+  } catch (e) { console.error(e); msgGer.value = { t: 'err', txt: 'Erro ao enviar a geradora.' }; }
+  finally { salvandoGer.value = false; }
 };
 
-const showSuccessAlertUnidade = ref(false); const showErrorAlertUnidade = ref(false); const showErrorCampoUnidade = ref(false);
-const dialogNovaUnidade = ref(false);
-const ucUnidade=ref(''); const nomeUnidade=ref(''); const dataInicioUnidade=ref(''); const consumoUnidade=ref(''); const kwhUnidade=ref(''); const enderecoUnidade=ref(''); const cep=ref(''); const secretaria=ref(''); const statusUnidade=ref('');
-const openDialogNovaUnidade = () => { dialogNovaUnidade.value=true; showSuccessAlertUnidade.value=false; showErrorAlertUnidade.value=false; showErrorCampoUnidade.value=false; };
-const sendUnidade = async () => {
-  if (!ucUnidade.value||!nomeUnidade.value||!dataInicioUnidade.value||!consumoUnidade.value||!kwhUnidade.value||!cep.value||!enderecoUnidade.value||!statusUnidade.value||!secretaria.value) { showErrorCampoUnidade.value=true; showSuccessAlertUnidade.value=false; showErrorAlertUnidade.value=false; return; }
+// ── nova / editar unidade ─────────────────────────────────────
+const dlgUnidade = ref(false);
+const editando = ref(null); // id da unidade em edição; null = nova
+const vazio = () => ({ uc: '', nome: '', dataInicio: '', mediaConsumo: '', valorKWH: '', endereco: '', cep: '', secretaria: '', status: '', tensao: 'BT' });
+const fUni = ref(vazio());
+const msgUni = ref(null);
+const salvandoUni = ref(false);
+const abrirNova = () => { editando.value = null; fUni.value = vazio(); msgUni.value = null; dlgUnidade.value = true; };
+const abrirEditar = (u) => {
+  editando.value = u.id; msgUni.value = null;
+  fUni.value = { uc: u.uc, nome: u.nome, dataInicio: u.dataInicio, mediaConsumo: u.mediaConsumo, valorKWH: u.valorKWH, endereco: u.endereco, cep: u.cep, secretaria: u.secretaria, status: u.status, tensao: u.tensao || 'BT' };
+  dlgUnidade.value = true;
+};
+const salvarUnidade = async () => {
+  const f = fUni.value;
+  const obrig = ['uc', 'nome', 'dataInicio', 'mediaConsumo', 'valorKWH', 'endereco', 'cep', 'secretaria', 'status'];
+  if (obrig.some(k => f[k] === '' || f[k] == null)) { msgUni.value = { t: 'err', txt: 'Preencha todos os campos.' }; return; }
+  salvandoUni.value = true;
   try {
-    const r = await useFetch(`${API_BASE_URL}/unidadecompensacao/`, { method:'POST', body:{uc:ucUnidade.value,nome:nomeUnidade.value,dataInicio:dataInicioUnidade.value,mediaConsumo:consumoUnidade.value,valorKWH:kwhUnidade.value,endereco:enderecoUnidade.value,status:statusUnidade.value,cep:cep.value,secretaria:secretaria.value}, key:'unidadePost' });
-    if (r) { showSuccessAlertUnidade.value=true; showErrorAlertUnidade.value=false; showErrorCampoUnidade.value=false; const {data:pu}=await useFetch(`${API_BASE_URL}/unidadecompensacao/`); predios.value=pu._value; }
-    else { showSuccessAlertUnidade.value=false; showErrorAlertUnidade.value=true; showErrorCampoUnidade.value=false; }
-  } catch { showSuccessAlertUnidade.value=false; showErrorAlertUnidade.value=true; showErrorCampoUnidade.value=false; }
+    const body = { ...f };
+    if (editando.value) await $fetch(`${API_BASE_URL}/unidadecompensacao/${editando.value}`, { method: 'PUT', body });
+    else await $fetch(`${API_BASE_URL}/unidadecompensacao/`, { method: 'POST', body });
+    await recarregarUnidades();
+    if (editando.value) { msgUni.value = { t: 'ok', txt: 'Unidade editada com sucesso.' }; }
+    else { msgUni.value = { t: 'ok', txt: 'Unidade adicionada com sucesso.' }; fUni.value = vazio(); }
+  } catch (e) { console.error(e); msgUni.value = { t: 'err', txt: editando.value ? 'Erro ao editar a unidade.' : 'Erro ao adicionar a unidade.' }; }
+  finally { salvandoUni.value = false; }
 };
 
-const meses = [1,2,3,4,5,6,7,8,9,10,11,12];
-const anos  = [2026,2025,2024,2023];
+// ── excluir unidade ───────────────────────────────────────────
+const dlgExcluir = ref(false);
+const excluindo = ref(false);
+const abrirExcluir = (u) => { atual.value = u; dlgExcluir.value = true; };
+const excluirUnidade = async () => {
+  excluindo.value = true;
+  try { await $fetch(`${API_BASE_URL}/unidadecompensacao/${atual.value.id}`, { method: 'DELETE' }); await recarregarUnidades(); dlgExcluir.value = false; avisar('Unidade excluída.'); }
+  catch (e) { console.error(e); avisar('Erro ao excluir a unidade.', true); }
+  finally { excluindo.value = false; }
+};
 
-const mesRelUni=ref(''); const anoRelUni=ref(''); const consumoUni=ref(''); const valorConUni=ref(''); const enerTusdUni=ref(''); const valorTusdUni=ref(''); const enerTeUni=ref(''); const valorTeUni=ref(''); const compensada=ref('');
-const dialogNovoRelatorio=ref(false); const showSuccessAlertRelatorio=ref(false); const showErrorCampoRelatorio=ref(false); const showErrorMesRelatorio=ref(false); const showErrorAlertRelatorio=ref(false);
-const openDialogNovoRelatorio = async (id) => { dialogNovoRelatorio.value=true; compensada.value=id; const {data:u}=await useFetch(`${API_BASE_URL}/unidadecompensacao/${compensada.value}`); ucUnidadeRela.value=u.value.uc; nomeUnidadeRela.value=u.value.nome; };
-const sendRelatorioUni = async () => {
-  if (!mesRelUni.value||!anoRelUni.value||!consumoUni.value||!valorConUni.value||!enerTusdUni.value||!valorTusdUni.value||!enerTeUni.value||!valorTeUni.value) { showErrorCampoRelatorio.value=true; showSuccessAlertRelatorio.value=false; showErrorMesRelatorio.value=false; return; }
-  const {data:rv}=await useFetch(`${API_BASE_URL}/relatoriocompensacao?idUnidadeCompensa=${compensada.value}&mes=${mesRelUni.value}&ano=${anoRelUni.value}`);
-  if (rv.value.length) { showErrorMesRelatorio.value=true; showSuccessAlertRelatorio.value=false; showErrorCampoRelatorio.value=false; return; }
+// ── relatórios da unidade (separados por ano) ─────────────────
+const dlgRelatorios = ref(false);
+const relatorios = ref([]);
+const carregandoRel = ref(false);
+const anoRel = ref(null);
+const buscarRelatorios = async () => {
+  carregandoRel.value = true;
   try {
-    const r=await useFetch(`${API_BASE_URL}/relatoriocompensacao/`,{method:'POST',body:{idUnidadeCompensa:compensada.value,mes:mesRelUni.value,ano:anoRelUni.value,consumokWh:consumoUni.value,consumoReais:valorConUni.value,enerInjTUSD:enerTusdUni.value,enerInjTE:enerTeUni.value,valorInjTUSD:valorTusdUni.value,valorInjTE:valorTeUni.value},key:'RelatorioUniPost'});
-    if (r) { showSuccessAlertRelatorio.value=true; showErrorCampoRelatorio.value=false; showErrorMesRelatorio.value=false; }
-    else { showErrorAlertRelatorio.value=true; showSuccessAlertRelatorio.value=false; showErrorCampoRelatorio.value=false; showErrorMesRelatorio.value=false; }
-  } catch { showErrorAlertRelatorio.value=true; showSuccessAlertRelatorio.value=false; showErrorCampoRelatorio.value=false; showErrorMesRelatorio.value=false; }
+    const r = await $fetch(`${API_BASE_URL}/relatoriocompensacao/`, { query: { idUnidadeCompensa: atual.value.id } });
+    relatorios.value = (r ?? []).filter(x => x.idUnidadeCompensa === atual.value.id);
+  } catch (e) { console.error(e); relatorios.value = []; avisar('Erro ao carregar os relatórios.', true); }
+  finally { carregandoRel.value = false; }
+};
+const anosRel = computed(() => {
+  const m = new Map();
+  relatorios.value.forEach(r => m.set(r.ano, (m.get(r.ano) ?? 0) + 1));
+  return [...m.entries()].sort((a, b) => b[0] - a[0]).map(([ano, qtd]) => ({ ano, qtd }));
+});
+// grade de 12 meses do ano escolhido
+const mesesRel = computed(() => {
+  const doAno = relatorios.value.filter(r => r.ano === anoRel.value);
+  return MESES.map((nome, i) => ({ mes: i + 1, nome, rel: doAno.find(r => r.mes === i + 1) ?? null }));
+});
+const abrirRelatorios = async (u) => {
+  atual.value = u; relatorios.value = []; anoRel.value = null; dlgRelatorios.value = true;
+  await buscarRelatorios();
+  anoRel.value = anosRel.value[0]?.ano ?? new Date().getFullYear();
+};
+const excluirRelatorio = async (r) => {
+  if (!confirm(`Excluir o relatório de ${MESES[r.mes - 1]}/${r.ano}?`)) return;
+  try { await $fetch(`${API_BASE_URL}/relatoriocompensacao/${r.id}`, { method: 'DELETE' }); await buscarRelatorios(); avisar('Relatório excluído.'); }
+  catch (e) { console.error(e); avisar('Erro ao excluir o relatório.', true); }
 };
 
-const dialogEditUnidade=ref(false); const showErrorCampoUnidadeEdit=ref(false); const showSuccessAlertUnidadeEdit=ref(false); const showErrorAlertUnidadeEdit=ref(false);
-const ucUnidadeEdit=ref(''); const nomeUnidadeEdit=ref(''); const dataInicioUnidadeEdit=ref(''); const consumoUnidadeEdit=ref(''); const kwhUnidadeEdit=ref(''); const enderecoUnidadeEdit=ref(''); const statusUnidadeEdit=ref(''); const secretariaEdit=ref(''); const cepEdit=ref(''); const compensadaId=ref('');
-const openDialogEditUnidade = async (id) => {
-  showErrorCampoUnidadeEdit.value=false; showSuccessAlertUnidadeEdit.value=false; showErrorAlertUnidadeEdit.value=false; dialogEditUnidade.value=true;
-  const {data:u}=await useFetch(`${API_BASE_URL}/unidadecompensacao/${id}`);
-  ucUnidadeEdit.value=u.value.uc; nomeUnidadeEdit.value=u.value.nome; dataInicioUnidadeEdit.value=u.value.dataInicio; consumoUnidadeEdit.value=u.value.mediaConsumo; kwhUnidadeEdit.value=u.value.valorKWH; enderecoUnidadeEdit.value=u.value.endereco; statusUnidadeEdit.value=u.value.status; compensadaId.value=u.value.id; secretariaEdit.value=u.value.secretaria; cepEdit.value=u.value.cep;
+// ── novo / editar relatório ───────────────────────────────────
+const dlgRel = ref(false);
+const relEditando = ref(null); // id do relatório em edição; null = novo
+const relVazio = () => ({ mes: '', ano: '', consumokWh: '', consumoReais: '', enerInjTUSD: '', valorInjTUSD: '', enerInjTE: '', valorInjTE: '' });
+const fRel = ref(relVazio());
+const msgRel = ref(null);
+const salvandoRel = ref(false);
+const CAMPOS_REL = [
+  { k: 'consumokWh', txt: 'Consumo (kWh)', ph: '0' },
+  { k: 'consumoReais', txt: 'Consumo (R$)', ph: '0,00' },
+  { k: 'enerInjTUSD', txt: 'Ener. inj. TUSD (kWh)', ph: '0' },
+  { k: 'valorInjTUSD', txt: 'Valor TUSD (R$)', ph: '0,00' },
+  { k: 'enerInjTE', txt: 'Ener. inj. TE (kWh)', ph: '0' },
+  { k: 'valorInjTE', txt: 'Valor TE (R$)', ph: '0,00' },
+];
+const abrirNovoRel = (u, mes = '', ano = '') => {
+  if (u) atual.value = u;
+  relEditando.value = null; fRel.value = { ...relVazio(), mes, ano }; msgRel.value = null; dlgRel.value = true;
 };
-const editUnidade = async () => {
-  if (!ucUnidadeEdit.value||!nomeUnidadeEdit.value||!dataInicioUnidadeEdit.value||!consumoUnidadeEdit.value||!kwhUnidadeEdit.value||!enderecoUnidadeEdit.value||!statusUnidadeEdit.value) { showErrorCampoUnidadeEdit.value=true; showSuccessAlertUnidadeEdit.value=false; return; }
+const abrirEditarRel = (r) => {
+  relEditando.value = r.id; msgRel.value = null;
+  fRel.value = { mes: r.mes, ano: r.ano, consumokWh: r.consumokWh, consumoReais: r.consumoReais, enerInjTUSD: r.enerInjTUSD, valorInjTUSD: r.valorInjTUSD, enerInjTE: r.enerInjTE, valorInjTE: r.valorInjTE };
+  dlgRel.value = true;
+};
+const salvarRel = async () => {
+  const f = fRel.value;
+  if (['mes', 'ano', ...CAMPOS_REL.map(c => c.k)].some(k => f[k] === '' || f[k] == null)) { msgRel.value = { t: 'err', txt: 'Preencha todos os campos.' }; return; }
+  salvandoRel.value = true;
   try {
-    const r=await useFetch(`${API_BASE_URL}/unidadecompensacao/${compensadaId.value}`,{method:'PUT',body:{uc:ucUnidadeEdit.value,nome:nomeUnidadeEdit.value,dataInicio:dataInicioUnidadeEdit.value,mediaConsumo:consumoUnidadeEdit.value,valorKWH:kwhUnidadeEdit.value,endereco:enderecoUnidadeEdit.value,status:statusUnidadeEdit.value,cep:cepEdit.value,secretaria:secretariaEdit.value},key:'unidadePut'});
-    if (r) { showErrorCampoUnidadeEdit.value=false; showSuccessAlertUnidadeEdit.value=true; const {data:up}=await useFetch(`${API_BASE_URL}/unidadecompensacao/`); predios.value=up._value; }
-    else { showErrorAlertUnidadeEdit.value=true; showErrorCampoUnidadeEdit.value=false; showSuccessAlertUnidadeEdit.value=false; }
-  } catch { showErrorAlertUnidadeEdit.value=true; showErrorCampoUnidadeEdit.value=false; showSuccessAlertUnidadeEdit.value=false; }
+    if (relEditando.value) {
+      const { mes, ano, ...resto } = f;
+      await $fetch(`${API_BASE_URL}/relatoriocompensacao/${relEditando.value}`, { method: 'PUT', body: { mes, ano, ...resto } });
+      msgRel.value = { t: 'ok', txt: 'Relatório editado com sucesso.' };
+    } else {
+      const existe = await $fetch(`${API_BASE_URL}/relatoriocompensacao/`, { query: { idUnidadeCompensa: atual.value.id, mes: f.mes, ano: f.ano } });
+      if ((existe ?? []).some(r => r.idUnidadeCompensa === atual.value.id && r.mes === Number(f.mes) && r.ano === Number(f.ano))) {
+        msgRel.value = { t: 'err', txt: `${MESES[f.mes - 1]}/${f.ano} já tem relatório lançado.` }; return;
+      }
+      await $fetch(`${API_BASE_URL}/relatoriocompensacao/`, { method: 'POST', body: { idUnidadeCompensa: atual.value.id, ...f } });
+      msgRel.value = { t: 'ok', txt: 'Relatório enviado com sucesso.' };
+    }
+    if (dlgRelatorios.value) await buscarRelatorios();
+  } catch (e) { console.error(e); msgRel.value = { t: 'err', txt: 'Erro ao salvar o relatório.' }; }
+  finally { salvandoRel.value = false; }
 };
-
-const dialogExcluirUnidade=ref(false); const showSuccessAlertUnidadeExcluida=ref(false); const showErrorAlertUnidadeExcluida=ref(false);
-const ucUnidadeExcluir=ref(''); const nomeUnidadeExcluir=ref(''); const idUnidadeExcluir=ref('');
-const openDialogExcluirUnidade = async (id) => { dialogExcluirUnidade.value=true; showSuccessAlertUnidadeExcluida.value=false; const {data:u}=await useFetch(`${API_BASE_URL}/unidadecompensacao/${id}`); ucUnidadeExcluir.value=u.value.uc; nomeUnidadeExcluir.value=u.value.nome; idUnidadeExcluir.value=u.value.id; };
-const deleteUnidade = async () => {
-  try {
-    const r=await useFetch(`${API_BASE_URL}/unidadecompensacao/${idUnidadeExcluir.value}`,{method:'DELETE',key:'deleteUnidade'});
-    if (r) showSuccessAlertUnidadeExcluida.value=true; else { showSuccessAlertUnidadeExcluida.value=false; showErrorAlertUnidadeExcluida.value=true; }
-    const {data:up}=await useFetch(`${API_BASE_URL}/unidadecompensacao/`); predios.value=up._value;
-  } catch (e) { console.error(e); alert('Erro ao excluir.'); }
-};
-
-const dialogRelatorios=ref(false); const relatoriosUnidade=ref(''); const idUnidadeRela=ref(''); const ucUnidadeRelatorio=ref(''); const nomeUnidadeRelatorio=ref('');
-const openDialogRelatorios = async (id) => {
-  dialogRelatorios.value=true;
-  const {data:u}=await useFetch(`${API_BASE_URL}/unidadecompensacao/${id}`); ucUnidadeRelatorio.value=u.value.uc; nomeUnidadeRelatorio.value=u.value.nome;
-  const {data:r}=await useFetch(`${API_BASE_URL}/relatoriocompensacao?idUnidadeCompensa=${id}`); relatoriosUnidade.value=r._value; idUnidadeRela.value=id;
-};
-const relatoriosOrdenados = computed(() => [...relatoriosUnidade.value].sort((a,b) => a.ano!==b.ano ? b.ano-a.ano : b.mes-a.mes));
-const deleteRelatorio = async (id) => {
-  try { await useFetch(`${API_BASE_URL}/relatoriocompensacao/${id}`,{method:'DELETE',key:'deleteRelatorio'}); const {data:r}=await useFetch(`${API_BASE_URL}/relatoriocompensacao?idUnidadeCompensa=${idUnidadeRela.value}`); relatoriosUnidade.value=r._value; }
-  catch (e) { console.error(e); alert('Erro ao excluir.'); }
-};
-
-const dialogRelatoriosEditar=ref(false); const showErrorCampoEdit=ref(false); const showSuccessAlertEdit=ref(false); const showErrorAlertEdit=ref(false);
-const idRelaEdit=ref(''); const mesRelUniEdit=ref(''); const anoRelUniEdit=ref(''); const consumoUniEdit=ref(''); const valorConUniEdit=ref(''); const enerTusdUniEdit=ref(''); const valorTusdUniEdit=ref(''); const enerTeUniEdit=ref(''); const valorTeUniEdit=ref('');
-const openDialogRelatoriosEditar = async (id) => {
-  const {data:r}=await useFetch(`${API_BASE_URL}/relatoriocompensacao/${id}`);
-  idRelaEdit.value=r.value.id; mesRelUniEdit.value=r.value.mes; anoRelUniEdit.value=r.value.ano; consumoUniEdit.value=r.value.consumokWh; valorConUniEdit.value=r.value.consumoReais; enerTusdUniEdit.value=r.value.enerInjTUSD; valorTusdUniEdit.value=r.value.valorInjTUSD; enerTeUniEdit.value=r.value.enerInjTE; valorTeUniEdit.value=r.value.valorInjTE;
-  dialogRelatoriosEditar.value=true;
-};
-const saveChangesRelatorio = async (id) => {
-  if (!mesRelUniEdit.value||!anoRelUniEdit.value||!consumoUniEdit.value||!valorConUniEdit.value||!enerTusdUniEdit.value||!valorTusdUniEdit.value||!enerTeUniEdit.value||!valorTeUniEdit.value) { showErrorCampoEdit.value=true; showSuccessAlertEdit.value=false; return; }
-  try {
-    const r=await useFetch(`${API_BASE_URL}/relatoriocompensacao/${id}`,{method:'PUT',body:{mes:mesRelUniEdit.value,ano:anoRelUniEdit.value,consumokWh:consumoUniEdit.value,consumoReais:valorConUniEdit.value,enerInjTUSD:enerTusdUniEdit.value,enerInjTE:enerTeUniEdit.value,valorInjTUSD:valorTusdUniEdit.value,valorInjTE:valorTeUniEdit.value},key:'relatorioPut'});
-    if (r) { showSuccessAlertEdit.value=true; showErrorCampoEdit.value=false; } else { showErrorAlertEdit.value=true; showSuccessAlertEdit.value=false; showErrorCampoEdit.value=false; }
-  } catch { showErrorAlertEdit.value=true; showSuccessAlertEdit.value=false; showErrorCampoEdit.value=false; }
-  const {data:pu}=await useFetch(`${API_BASE_URL}/unidadecompensacao/`); predios.value=pu._value;
-};
-
-const deletePorcetagem = async (id) => {
-  try { await useFetch(`${API_BASE_URL}/porcentagem/${id}`,{method:'DELETE',key:'deletePorcetagem'}); const {data:n}=await useFetch(`${API_BASE_URL}/porcentagem/`); listaPorcento.value=n._value; porcentagensAtivas.value=porcentagensAtivas.value.filter(p=>p.id!==id); }
-  catch (e) { console.error(e); alert('Erro ao excluir.'); }
-};
-
-const contaEducacao = predios.value.filter(i => i.secretaria==='E');
-const contaSaude    = predios.value.filter(i => i.secretaria==='S');
-const contaOutros   = predios.value.filter(i => i.secretaria==='O');
 </script>
 
 <template>
-<div class="pb-root">
-
-  <!-- ══════════════════════════════════════
-       HEADER DA PÁGINA
-  ══════════════════════════════════════ -->
-  <div class="pb-header">
-    <div class="pb-header-left">
-      <div class="pb-header-icon">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round">
-          <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
-          <polyline points="9 22 9 12 15 12 15 22"/>
-        </svg>
-      </div>
+  <div class="lx-page">
+    <!-- Cabeçalho -->
+    <header class="lx-head">
       <div>
-        <nav class="pb-breadcrumb">
-          <a href="/">Início</a><span>›</span>
-          <a href="/">Unidades Consumidoras</a><span>›</span>
-          <span>Prédios Públicos</span>
+        <nav class="lx-crumb" aria-label="Você está em">
+          <NuxtLink to="/">Início</NuxtLink><span class="sep">›</span><b>UCs Públicas</b>
         </nav>
-        <h1 class="pb-title">Prédios Públicos</h1>
-        <p class="pb-sub">Gestão das unidades compensadoras por secretaria</p>
+        <h1 class="lx-title">Unidades <span class="grad">públicas</span></h1>
+        <p class="lx-sub">Prédios, iluminação pública e praças da prefeitura em um só lugar</p>
       </div>
-    </div>
-    <img src="https://i.imgur.com/NeDPR3O.png" class="pb-header-img" alt="">
-  </div>
-
-  <!-- ══════════════════════════════════════
-       KPI CARDS
-  ══════════════════════════════════════ -->
-  <div class="pb-kpi-row">
-    <div class="pb-kpi pb-kpi-indigo">
-      <div class="pb-kpi-badge">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/>
-        </svg>
-      </div>
-      <span class="pb-kpi-label">Educação</span>
-      <span class="pb-kpi-val">{{ contaEducacao.length }}</span>
-      <span class="pb-kpi-note">escolas e CEIs</span>
-      <div class="pb-kpi-bottom"></div>
-    </div>
-
-    <div class="pb-kpi pb-kpi-green">
-      <div class="pb-kpi-badge">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
-        </svg>
-      </div>
-      <span class="pb-kpi-label">Saúde</span>
-      <span class="pb-kpi-val">{{ contaSaude.length }}</span>
-      <span class="pb-kpi-note">UBS e postos</span>
-      <div class="pb-kpi-bottom"></div>
-    </div>
-
-    <div class="pb-kpi pb-kpi-amber">
-      <div class="pb-kpi-badge">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
-        </svg>
-      </div>
-      <span class="pb-kpi-label">Outros</span>
-      <span class="pb-kpi-val">{{ contaOutros.length }}</span>
-      <span class="pb-kpi-note">órgãos municipais</span>
-      <div class="pb-kpi-bottom"></div>
-    </div>
-
-    <div class="pb-kpi pb-kpi-violet">
-      <div class="pb-kpi-badge">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/>
-          <path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
-        </svg>
-      </div>
-      <span class="pb-kpi-label">Total</span>
-      <span class="pb-kpi-val">{{ predios.length }}</span>
-      <span class="pb-kpi-note">unidades cadastradas</span>
-      <div class="pb-kpi-bottom"></div>
-    </div>
-  </div>
-
-  <!-- ══════════════════════════════════════
-       TABELA PRINCIPAL
-  ══════════════════════════════════════ -->
-  <div class="pb-body">
-    <div class="pb-table-card">
-
-      <!-- Cabeçalho do card -->
-      <div class="pb-card-hd">
-        <div class="pb-card-hd-left">
-          <div class="pb-card-num">01</div>
-          <div>
-            <h3 class="pb-card-title">Lista de Prédios Públicos</h3>
-            <p class="pb-card-sub">Filtre por secretaria e gerencie cada unidade</p>
-          </div>
-        </div>
-        <button class="pb-btn-add" @click="openDialogNovaUnidade">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          Adicionar Prédio
+      <div class="lx-head-actions">
+        <button class="lx-btn" style="--c1:var(--green);--c2:var(--teal)" @click="abrirNova">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Nova unidade
         </button>
       </div>
+    </header>
 
-      <!-- Filtros de categoria -->
-      <div class="pb-filters">
-        <span class="pb-filters-lbl">Filtrar por secretaria</span>
-        <div class="pb-filter-chips">
-          <button class="pb-chip"
-            :class="selecionado===null ? 'pb-chip-active pb-chip-slate' : ''"
-            @click="selecionado=null">Todos</button>
-          <button class="pb-chip"
-            :class="selecionado==='E' ? 'pb-chip-active pb-chip-indigo' : ''"
-            @click="selecionado='E'">Educação</button>
-          <button class="pb-chip"
-            :class="selecionado==='S' ? 'pb-chip-active pb-chip-green' : ''"
-            @click="selecionado='S'">Saúde</button>
-          <button class="pb-chip"
-            :class="selecionado==='O' ? 'pb-chip-active pb-chip-amber' : ''"
-            @click="selecionado='O'">Outros</button>
+    <!-- Secretarias (clicáveis: filtram a lista) -->
+    <section class="uc-secs" aria-label="Unidades por secretaria">
+      <button v-for="s in SECS" :key="s.v" class="uc-sec" :class="{ on: fSec.has(s.v) }" :style="{ '--c': s.c }" :aria-pressed="fSec.has(s.v)" @click="alternarSec(s.v)">
+        <span class="uc-sec-ic">{{ s.ic }}</span>
+        <span class="uc-sec-tx"><small>{{ s.txt }}</small><b>{{ carregando ? '…' : resumo.sec[s.v] }}</b><em>{{ s.desc }}</em></span>
+      </button>
+    </section>
+
+    <!-- Status por secretaria + tensão -->
+    <section class="uc-sts">
+      <button v-for="st in STATUS" :key="st.v" class="uc-st" :class="{ on: fStatus === st.v }" :style="{ '--c': st.c }" :aria-pressed="fStatus === st.v"
+        @click="fStatus = fStatus === st.v ? '' : st.v">
+        <div class="uc-st-hd"><span><i></i>{{ st.txt }}</span><b>{{ carregando ? '…' : resumo.status[st.v].total }}</b></div>
+        <div class="uc-st-bar">
+          <i v-for="s in SECS" :key="s.v" :style="{ flex: resumo.status[st.v].sec[s.v], background: s.c }" :title="`${s.txt}: ${resumo.status[st.v].sec[s.v]}`"></i>
+        </div>
+        <div class="uc-st-sec">
+          <span v-for="s in SECS" :key="s.v" :class="{ zero: !resumo.status[st.v].sec[s.v] }" :style="{ '--s': s.c }"><i></i>{{ s.txt }} <b>{{ resumo.status[st.v].sec[s.v] }}</b></span>
+        </div>
+      </button>
+
+      <div class="uc-st uc-tensao">
+        <div class="uc-st-hd"><span><i style="background:var(--teal);box-shadow:0 0 8px var(--teal)"></i>Tensão</span><b>{{ carregando ? '…' : resumo.total }}</b></div>
+        <div class="uc-ten">
+          <button v-for="t in ['BT', 'MT']" :key="t" :class="{ on: fTensao === t }" :aria-pressed="fTensao === t" @click="fTensao = fTensao === t ? '' : t">
+            <small>{{ t === 'BT' ? 'Baixa tensão' : 'Média tensão' }}</small><b>{{ carregando ? '…' : resumo.tensao[t] }}</b><em>{{ t }}</em>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Lista -->
+    <section class="lx-panel">
+      <div class="lx-panel-hd">
+        <div>
+          <h3><span class="lx-ic" style="--c:var(--green)">☰</span>Unidades consumidoras</h3>
+          <p>{{ carregando ? 'Carregando…' : `${filtradas.length} de ${resumo.total} unidades` }}</p>
         </div>
       </div>
 
-      <!-- Tabela -->
-      <div class="pb-tbl-wrap">
-        <table class="pb-table">
-          <thead class="pb-thead">
-            <tr>
-              <th class="pb-th">UC</th>
-              <th class="pb-th">Nome</th>
-              <th class="pb-th" style="text-align:center">Tensão</th>
-              <th class="pb-th" style="text-align:center">Status</th>
-              <th class="pb-th" style="text-align:center">Geradora</th>
-              <th class="pb-th" style="text-align:center">Secretaria</th>
-              <th class="pb-th" style="text-align:center">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(predio, i) in categoriaSelecionada(predios.value ?? predios)"
-              :key="i" class="pb-tr" :class="{'pb-tr-alt': i%2===1}">
-
-              <!-- UC -->
-              <td class="pb-td pb-mono">{{ predio.uc }}</td>
-
-              <!-- Nome -->
-              <td class="pb-td" style="font-weight:700;max-width:220px">{{ predio.nome }}</td>
-
-              <!-- Tensão -->
-              <td class="pb-td" style="text-align:center">
-                <span class="pb-tensao-pill">{{ predio.tensao }}</span>
-              </td>
-
-              <!-- Status -->
-              <td class="pb-td" style="text-align:center">
-                <span class="pb-status-pill" :class="predio.status==='L' ? 'pb-status-green' : predio.status==='M' ? 'pb-status-amber' : 'pb-status-red'">
-                  <span class="pb-status-dot"></span>
-                  {{ getStatusLabel(predio.status) }}
-                </span>
-              </td>
-
-              <!-- Geradora -->
-              <td class="pb-td" style="text-align:center">
-                <button v-if="predio.status==='L'"
-                  class="pb-icon-btn pb-icon-indigo"
-                  @click="openDialog(predio.id)"
-                  title="Ver Porcentagens">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-                  </svg>
-                </button>
-                <span v-else class="pb-off-pill">Off</span>
-              </td>
-
-              <!-- Secretaria -->
-              <td class="pb-td" style="text-align:center">
-                <span class="pb-sec-pill"
-                  :class="predio.secretaria==='E' ? 'pb-sec-indigo' : predio.secretaria==='S' ? 'pb-sec-green' : 'pb-sec-amber'">
-                  {{ getStatusSecretaria(predio.secretaria) }}
-                </span>
-              </td>
-
-              <!-- Ações -->
-              <td class="pb-td" style="text-align:center">
-                <div class="pb-actions-row">
-                  <!-- Novo relatório -->
-                  <button class="pb-icon-btn pb-icon-indigo" @click="openDialogNovoRelatorio(predio.id)" title="Novo Relatório">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-                      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-                    </svg>
-                  </button>
-                  <!-- Ver/editar relatórios -->
-                  <button class="pb-icon-btn pb-icon-indigo" @click="openDialogRelatorios(predio.id)" title="Editar Relatórios">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-                      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
-                    </svg>
-                  </button>
-                  <!-- Adicionar geradora -->
-                  <button v-if="predio.status==='L'" class="pb-icon-btn pb-icon-amber" @click="openDialogGeradora(predio.id)" title="Adicionar Geradora">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-                      <path d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                    </svg>
-                  </button>
-                  <!-- Editar prédio -->
-                  <button class="pb-icon-btn pb-icon-slate" @click="openDialogEditUnidade(predio.id)" title="Editar Prédio">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-                      <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-                      <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                    </svg>
-                  </button>
-                  <!-- Excluir prédio -->
-                  <button class="pb-icon-btn pb-icon-red" @click="openDialogExcluirUnidade(predio.id)" title="Excluir Prédio">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-                      <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
-                      <path d="M10 11v6"/><path d="M14 11v6"/>
-                    </svg>
-                  </button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
-  <!-- ══════════════════════════════════════
-       DIALOGS — estilos Lucentis aplicados
-  ══════════════════════════════════════ -->
-
-  <!-- Dialog: Adicionar Geradora -->
-  <v-dialog v-model="dialogGeradora" max-width="560">
-    <div class="pb-dialog">
-      <div class="pb-dialog-hd" style="background:linear-gradient(135deg,#4F46E5,#7C3AED)">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-        <span>Adicionar Usina ao Prédio</span>
-        <button class="pb-dialog-close" @click="dialogGeradora=false">✕</button>
-      </div>
-      <div class="pb-dialog-body">
-        <div v-if="showErrorAlertGeracao"   class="pb-alert pb-alert-err">Erro ao enviar geradora!</div>
-        <div v-if="showErrorCampoGeracao"   class="pb-alert pb-alert-err">Preencha todos os campos!</div>
-        <div v-if="showSuccessAlertGeracao" class="pb-alert pb-alert-ok">Geradora enviada com sucesso!</div>
-        <div class="pb-dialog-info">
-          <span class="pb-info-row"><strong>UC:</strong> {{ ucUnidadeRela }}</span>
-          <span class="pb-info-row"><strong>Unidade:</strong> {{ nomeUnidadeRela }}</span>
+      <div class="uc-filtros">
+        <label class="lx-search uc-busca">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input v-model="busca" class="lx-input" type="search" placeholder="Buscar por UC, nome ou endereço" aria-label="Buscar por UC, nome ou endereço" />
+        </label>
+        <div class="lx-seg" role="group" aria-label="Tensão">
+          <button :class="{ on: !fTensao }" @click="fTensao = ''">Todas</button>
+          <button :class="{ on: fTensao === 'BT' }" @click="fTensao = 'BT'">BT</button>
+          <button :class="{ on: fTensao === 'MT' }" @click="fTensao = 'MT'">MT</button>
         </div>
-        <div class="pb-dialog-divider"></div>
-        <div class="pb-fg">
-          <label class="pb-flbl">Usina</label>
-          <select v-model="selectedUsina" class="pb-select">
-            <option disabled value="">Selecione a usina…</option>
-            <option v-for="u in usinas" :key="u.id" :value="u.id">{{ u.uc }} — {{ u.nome }}</option>
-          </select>
+        <div class="lx-seg" role="group" aria-label="Status">
+          <button :class="{ on: !fStatus }" @click="fStatus = ''">Todos</button>
+          <button v-for="st in STATUS" :key="st.v" :class="{ on: fStatus === st.v }" :style="{ '--c': st.c }" @click="fStatus = st.v">{{ st.um }}</button>
         </div>
-        <div class="pb-fg">
-          <label class="pb-flbl">Porcentagem (%)</label>
-          <input v-model="porcentagem" type="number" class="pb-input" placeholder="0" />
-        </div>
+        <button v-if="temFiltro" class="lx-btn-ghost sm" @click="limparFiltros">Limpar filtros</button>
       </div>
-      <div class="pb-dialog-footer">
-        <button class="pb-btn-secondary" @click="dialogGeradora=false">Cancelar</button>
-        <button class="pb-btn-primary pb-btn-indigo" @click="sendGeradora">Salvar</button>
+      <div v-if="fSec.size" class="uc-ativos">
+        <span>Secretarias:</span>
+        <button v-for="v in fSec" :key="v" class="lx-pill" :style="{ '--c': secDe(v).c }" @click="alternarSec(v)">{{ secDe(v).txt }} ×</button>
       </div>
-    </div>
-  </v-dialog>
 
-  <!-- Dialog: Ver Porcentagens -->
-  <v-dialog v-model="dialogOpen" max-width="560">
-    <div class="pb-dialog">
-      <div class="pb-dialog-hd" style="background:linear-gradient(135deg,#059669,#4F46E5)">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        <span>Porcentagens do Prédio</span>
-        <button class="pb-dialog-close" @click="dialogOpen=false">✕</button>
-      </div>
-      <div class="pb-dialog-body">
-        <p class="pb-dialog-section-lbl">Porcentagens Ativas</p>
-        <div class="pb-pct-list">
-          <div v-for="(qtd, i) in porcentagensAtivas" :key="i" class="pb-pct-item">
-            <div class="pb-pct-info">
-              <span class="pb-pct-uc" v-for="g in procurarGeradora(qtd.idGeradora)" :key="g.id">{{ g.uc }}</span>
-              <span class="pb-pct-val">{{ qtd.porcentagem }}%</span>
-            </div>
-            <button class="pb-icon-btn pb-icon-red" @click="deletePorcetagem(qtd.id)" title="Remover">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-          </div>
-          <p v-if="!porcentagensAtivas.length" class="pb-empty-msg">Nenhuma porcentagem ativa.</p>
-        </div>
-        <p class="pb-dialog-section-lbl" style="margin-top:16px">Histórico</p>
-        <div class="pb-pct-list">
-          <div v-for="(qtd, i) in porcentagensHistoricas" :key="i" class="pb-pct-item pb-pct-hist">
-            <div class="pb-pct-info">
-              <span class="pb-pct-uc" v-for="g in procurarGeradora(qtd.idGeradora)" :key="g.id">{{ g.uc }}</span>
-              <span class="pb-pct-val">{{ qtd.porcentagem }}%</span>
-              <span class="pb-pct-period">{{ formatarData(qtd.data_inicio) }} → {{ formatarData(qtd.data_fim) }}</span>
-            </div>
-          </div>
-          <p v-if="!porcentagensHistoricas.length" class="pb-empty-msg">Sem histórico.</p>
-        </div>
-      </div>
-      <div class="pb-dialog-footer">
-        <button class="pb-btn-primary pb-btn-green" @click="dialogOpen=false">Fechar</button>
-      </div>
-    </div>
-  </v-dialog>
-
-  <!-- Dialog: Adicionar Prédio -->
-  <v-dialog v-model="dialogNovaUnidade" max-width="680">
-    <div class="pb-dialog">
-      <div class="pb-dialog-hd" style="background:linear-gradient(135deg,#059669,#4F46E5)">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-        <span>Adicionar Prédio Público</span>
-        <button class="pb-dialog-close" @click="dialogNovaUnidade=false">✕</button>
-      </div>
-      <div class="pb-dialog-body">
-        <div v-if="showErrorCampoUnidade"   class="pb-alert pb-alert-err">Preencha todos os campos!</div>
-        <div v-if="showSuccessAlertUnidade" class="pb-alert pb-alert-ok">Prédio adicionado com sucesso!</div>
-        <div class="pb-form-grid">
-          <div class="pb-fg"><label class="pb-flbl">UC</label><input v-model="ucUnidade"          type="number" class="pb-input" placeholder="Número UC" /></div>
-          <div class="pb-fg"><label class="pb-flbl">Nome</label><input v-model="nomeUnidade"       class="pb-input" placeholder="Nome da unidade" /></div>
-          <div class="pb-fg"><label class="pb-flbl">Data início</label><input v-model="dataInicioUnidade" type="date" class="pb-input" /></div>
-          <div class="pb-fg"><label class="pb-flbl">Consumo médio (kWh)</label><input v-model="consumoUnidade" type="number" class="pb-input" placeholder="0" /></div>
-          <div class="pb-fg"><label class="pb-flbl">Valor kWh (R$)</label><input v-model="kwhUnidade" type="number" class="pb-input" placeholder="0,00" /></div>
-          <div class="pb-fg"><label class="pb-flbl">CEP</label><input v-model="cep" type="number" class="pb-input" placeholder="CEP" /></div>
-          <div class="pb-fg pb-fg-full"><label class="pb-flbl">Endereço</label><input v-model="enderecoUnidade" class="pb-input" placeholder="Endereço completo" /></div>
-          <div class="pb-fg">
-            <label class="pb-flbl">Secretaria</label>
-            <div class="pb-radio-group">
-              <label class="pb-radio" :class="secretaria==='E'?'pb-radio-on':''"><input type="radio" v-model="secretaria" value="E" style="display:none"> Educação</label>
-              <label class="pb-radio" :class="secretaria==='S'?'pb-radio-on':''"><input type="radio" v-model="secretaria" value="S" style="display:none"> Saúde</label>
-              <label class="pb-radio" :class="secretaria==='O'?'pb-radio-on':''"><input type="radio" v-model="secretaria" value="O" style="display:none"> Outros</label>
-            </div>
-          </div>
-          <div class="pb-fg">
-            <label class="pb-flbl">Status</label>
-            <div class="pb-radio-group">
-              <label class="pb-radio pb-radio-green" :class="statusUnidade==='L'?'pb-radio-on-green':''"><input type="radio" v-model="statusUnidade" value="L" style="display:none"> Ligado</label>
-              <label class="pb-radio pb-radio-red"   :class="statusUnidade==='D'?'pb-radio-on-red':''"><input type="radio" v-model="statusUnidade" value="D" style="display:none"> Desligado</label>
-              <label class="pb-radio pb-radio-amber" :class="statusUnidade==='M'?'pb-radio-on-amber':''"><input type="radio" v-model="statusUnidade" value="M" style="display:none"> Manutenção</label>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="pb-dialog-footer">
-        <button class="pb-btn-secondary" @click="dialogNovaUnidade=false">Cancelar</button>
-        <button class="pb-btn-primary pb-btn-green" @click="sendUnidade">Adicionar</button>
-      </div>
-    </div>
-  </v-dialog>
-
-  <!-- Dialog: Novo Relatório -->
-  <v-dialog v-model="dialogNovoRelatorio" max-width="620">
-    <div class="pb-dialog">
-      <div class="pb-dialog-hd" style="background:linear-gradient(135deg,#059669,#4F46E5)">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="13" x2="8" y2="13"/><line x1="12" y1="17" x2="8" y2="17"/></svg>
-        <span>Criar Relatório Mensal</span>
-        <button class="pb-dialog-close" @click="dialogNovoRelatorio=false">✕</button>
-      </div>
-      <div class="pb-dialog-body">
-        <div v-if="showErrorAlertRelatorio"  class="pb-alert pb-alert-err">Erro ao enviar relatório!</div>
-        <div v-if="showErrorCampoRelatorio"  class="pb-alert pb-alert-err">Preencha todos os campos!</div>
-        <div v-if="showErrorMesRelatorio"    class="pb-alert pb-alert-err">Esse mês/ano já está preenchido!</div>
-        <div v-if="showSuccessAlertRelatorio" class="pb-alert pb-alert-ok">Relatório enviado com sucesso!</div>
-        <div class="pb-dialog-info">
-          <span class="pb-info-row"><strong>UC:</strong> {{ ucUnidadeRela }}</span>
-          <span class="pb-info-row"><strong>Unidade:</strong> {{ nomeUnidadeRela }}</span>
-        </div>
-        <div class="pb-dialog-divider"></div>
-        <div class="pb-form-grid">
-          <div class="pb-fg">
-            <label class="pb-flbl">Mês</label>
-            <select v-model="mesRelUni" class="pb-select">
-              <option disabled value="">Mês</option>
-              <option v-for="m in meses" :key="m" :value="m">{{ m }}</option>
-            </select>
-          </div>
-          <div class="pb-fg">
-            <label class="pb-flbl">Ano</label>
-            <select v-model="anoRelUni" class="pb-select">
-              <option disabled value="">Ano</option>
-              <option v-for="a in anos" :key="a" :value="a">{{ a }}</option>
-            </select>
-          </div>
-          <div class="pb-fg"><label class="pb-flbl">Consumo (kWh)</label><input v-model="consumoUni"   type="number" class="pb-input" placeholder="0" /></div>
-          <div class="pb-fg"><label class="pb-flbl">Consumo (R$)</label><input v-model="valorConUni"  type="number" class="pb-input" placeholder="0,00" /></div>
-          <div class="pb-fg"><label class="pb-flbl">Ener. Inj-TUSD (kWh)</label><input v-model="enerTusdUni"  type="number" class="pb-input" placeholder="0" /></div>
-          <div class="pb-fg"><label class="pb-flbl">Valor TUSD (R$)</label><input v-model="valorTusdUni" type="number" class="pb-input" placeholder="0,00" /></div>
-          <div class="pb-fg"><label class="pb-flbl">Ener. Inj-TE (kWh)</label><input v-model="enerTeUni"    type="number" class="pb-input" placeholder="0" /></div>
-          <div class="pb-fg"><label class="pb-flbl">Valor TE (R$)</label><input v-model="valorTeUni"  type="number" class="pb-input" placeholder="0,00" /></div>
-        </div>
-      </div>
-      <div class="pb-dialog-footer">
-        <button class="pb-btn-secondary" @click="dialogNovoRelatorio=false">Cancelar</button>
-        <button class="pb-btn-primary pb-btn-green" @click="sendRelatorioUni">Salvar</button>
-      </div>
-    </div>
-  </v-dialog>
-
-  <!-- Dialog: Editar Prédio -->
-  <v-dialog v-model="dialogEditUnidade" max-width="680">
-    <div class="pb-dialog">
-      <div class="pb-dialog-hd" style="background:linear-gradient(135deg,#475569,#0f172a)">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-        <span>Editar Prédio Público</span>
-        <button class="pb-dialog-close" @click="dialogEditUnidade=false">✕</button>
-      </div>
-      <div class="pb-dialog-body">
-        <div v-if="showErrorAlertUnidadeEdit"   class="pb-alert pb-alert-err">Erro ao editar unidade!</div>
-        <div v-if="showErrorCampoUnidadeEdit"   class="pb-alert pb-alert-err">Preencha todos os campos!</div>
-        <div v-if="showSuccessAlertUnidadeEdit" class="pb-alert pb-alert-ok">Unidade editada com sucesso!</div>
-        <div class="pb-form-grid">
-          <div class="pb-fg"><label class="pb-flbl">UC</label><input v-model="ucUnidadeEdit"          type="number" class="pb-input" /></div>
-          <div class="pb-fg"><label class="pb-flbl">Nome</label><input v-model="nomeUnidadeEdit"       class="pb-input" /></div>
-          <div class="pb-fg"><label class="pb-flbl">Data início</label><input v-model="dataInicioUnidadeEdit" type="date" class="pb-input" /></div>
-          <div class="pb-fg"><label class="pb-flbl">Consumo médio (kWh)</label><input v-model="consumoUnidadeEdit" type="number" class="pb-input" /></div>
-          <div class="pb-fg"><label class="pb-flbl">Valor kWh (R$)</label><input v-model="kwhUnidadeEdit" type="number" class="pb-input" /></div>
-          <div class="pb-fg"><label class="pb-flbl">CEP</label><input v-model="cepEdit" type="number" class="pb-input" /></div>
-          <div class="pb-fg pb-fg-full"><label class="pb-flbl">Endereço</label><input v-model="enderecoUnidadeEdit" class="pb-input" /></div>
-          <div class="pb-fg">
-            <label class="pb-flbl">Secretaria</label>
-            <div class="pb-radio-group">
-              <label class="pb-radio" :class="secretariaEdit==='E'?'pb-radio-on':''"><input type="radio" v-model="secretariaEdit" value="E" style="display:none"> Educação</label>
-              <label class="pb-radio" :class="secretariaEdit==='S'?'pb-radio-on':''"><input type="radio" v-model="secretariaEdit" value="S" style="display:none"> Saúde</label>
-              <label class="pb-radio" :class="secretariaEdit==='O'?'pb-radio-on':''"><input type="radio" v-model="secretariaEdit" value="O" style="display:none"> Outros</label>
-            </div>
-          </div>
-          <div class="pb-fg">
-            <label class="pb-flbl">Status</label>
-            <div class="pb-radio-group">
-              <label class="pb-radio pb-radio-green" :class="statusUnidadeEdit==='L'?'pb-radio-on-green':''"><input type="radio" v-model="statusUnidadeEdit" value="L" style="display:none"> Ligado</label>
-              <label class="pb-radio pb-radio-red"   :class="statusUnidadeEdit==='D'?'pb-radio-on-red':''"><input type="radio" v-model="statusUnidadeEdit" value="D" style="display:none"> Desligado</label>
-              <label class="pb-radio pb-radio-amber" :class="statusUnidadeEdit==='M'?'pb-radio-on-amber':''"><input type="radio" v-model="statusUnidadeEdit" value="M" style="display:none"> Manutenção</label>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="pb-dialog-footer">
-        <button class="pb-btn-secondary" @click="dialogEditUnidade=false">Cancelar</button>
-        <button class="pb-btn-primary" style="background:#475569!important" @click="editUnidade">Salvar edição</button>
-      </div>
-    </div>
-  </v-dialog>
-
-  <!-- Dialog: Excluir Prédio -->
-  <v-dialog v-model="dialogExcluirUnidade" max-width="420">
-    <div class="pb-dialog">
-      <div class="pb-dialog-hd" style="background:linear-gradient(135deg,#E11D48,#9F1239)">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
-        <span>Excluir Prédio</span>
-        <button class="pb-dialog-close" @click="dialogExcluirUnidade=false">✕</button>
-      </div>
-      <div class="pb-dialog-body">
-        <div v-if="showSuccessAlertUnidadeExcluida" class="pb-alert pb-alert-ok">Prédio excluído com sucesso!</div>
-        <div v-if="showErrorAlertUnidadeExcluida"   class="pb-alert pb-alert-err">Erro ao excluir prédio!</div>
-        <div v-if="!showSuccessAlertUnidadeExcluida" class="pb-excluir-box">
-          <div class="pb-excluir-icon">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#E11D48" stroke-width="2" stroke-linecap="round">
-              <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-            </svg>
-          </div>
-          <p class="pb-excluir-msg">Tem certeza que deseja excluir este prédio?</p>
-          <div class="pb-dialog-info" style="margin-top:12px">
-            <span class="pb-info-row"><strong>UC:</strong> {{ ucUnidadeExcluir }}</span>
-            <span class="pb-info-row"><strong>Nome:</strong> {{ nomeUnidadeExcluir }}</span>
-          </div>
-        </div>
-      </div>
-      <div class="pb-dialog-footer" v-if="!showSuccessAlertUnidadeExcluida">
-        <button class="pb-btn-secondary" @click="dialogExcluirUnidade=false">Cancelar</button>
-        <button class="pb-btn-primary pb-btn-red" @click="deleteUnidade">Confirmar exclusão</button>
-      </div>
-    </div>
-  </v-dialog>
-
-  <!-- Dialog: Listar Relatórios -->
-  <v-dialog v-model="dialogRelatorios" max-width="680">
-    <div class="pb-dialog">
-      <div class="pb-dialog-hd" style="background:linear-gradient(135deg,#4F46E5,#059669)">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        <span>Lista de Relatórios</span>
-        <button class="pb-dialog-close" @click="dialogRelatorios=false">✕</button>
-      </div>
-      <div class="pb-dialog-body">
-        <div class="pb-dialog-info" style="margin-bottom:16px">
-          <span class="pb-info-row"><strong>UC:</strong> {{ ucUnidadeRelatorio }}</span>
-          <span class="pb-info-row"><strong>Unidade:</strong> {{ nomeUnidadeRelatorio }}</span>
-        </div>
-        <div class="pb-rela-tbl-wrap">
-          <table class="pb-table" style="font-size:13px">
-            <thead class="pb-thead">
-              <tr>
-                <th class="pb-th">ID</th>
-                <th class="pb-th">Ano</th>
-                <th class="pb-th">Mês</th>
-                <th class="pb-th" style="text-align:center">Ações</th>
-              </tr>
+      <div v-if="carregando && !unidades.length" class="lx-loading"><span class="lx-spin"></span><b>Carregando unidades…</b></div>
+      <template v-else>
+        <div class="lx-tbl-wrap">
+          <table class="lx-tbl uc-tbl">
+            <thead>
+              <tr><th>UC</th><th>Nome / endereço</th><th class="c">Secretaria</th><th class="c">Tensão</th><th class="c">Status</th><th class="c">Geradoras</th><th class="c">Ações</th></tr>
             </thead>
             <tbody>
-              <tr v-for="(r,i) in relatoriosOrdenados" :key="r.id" class="pb-tr" :class="{'pb-tr-alt':i%2===1}">
-                <td class="pb-td pb-mono">{{ r.id }}</td>
-                <td class="pb-td" style="font-weight:700">{{ r.ano }}</td>
-                <td class="pb-td">{{ r.mes }}</td>
-                <td class="pb-td" style="text-align:center">
-                  <div class="pb-actions-row" style="justify-content:center">
-                    <button class="pb-icon-btn pb-icon-slate" @click="openDialogRelatoriosEditar(r.id)" title="Editar">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              <tr v-for="u in visiveis" :key="u.id">
+                <td class="lx-mono">{{ u.uc }}</td>
+                <td class="uc-nome"><b>{{ u.nome }}</b><small v-if="u.endereco">{{ u.endereco }}</small></td>
+                <td class="c"><span class="lx-pill" :style="{ '--c': secDe(u.secretaria).c }">{{ secDe(u.secretaria).txt }}</span></td>
+                <td class="c"><span class="uc-ten-pill" :class="{ mt: u.tensao === 'MT' }">{{ u.tensao || '—' }}</span></td>
+                <td class="c"><span class="lx-pill" :style="{ '--c': statusDe(u.status).c }"><i></i>{{ statusDe(u.status).um }}</span></td>
+                <td class="c">
+                  <button v-if="u.status === 'L'" class="lx-icon-btn uc-ib" style="--c:var(--teal)" title="Ver porcentagens" @click="abrirPorc(u)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg>
+                  </button>
+                  <span v-else class="uc-off">off</span>
+                </td>
+                <td class="c">
+                  <div class="uc-acoes">
+                    <button class="lx-icon-btn uc-ib" style="--c:var(--green)" title="Novo relatório" @click="abrirNovoRel(u)">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     </button>
-                    <button class="pb-icon-btn pb-icon-red" @click="deleteRelatorio(r.id)" title="Excluir">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+                    <button class="lx-icon-btn uc-ib" style="--c:var(--teal)" title="Editar relatórios" @click="abrirRelatorios(u)">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    </button>
+                    <button v-if="u.status === 'L'" class="lx-icon-btn uc-ib" style="--c:var(--orange)" title="Adicionar geradora" @click="abrirGeradora(u)">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                    </button>
+                    <button class="lx-icon-btn uc-ib" style="--c:var(--purple)" title="Editar unidade" @click="abrirEditar(u)">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </button>
+                    <button class="lx-icon-btn uc-ib" style="--c:var(--red)" title="Excluir unidade" @click="abrirExcluir(u)">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
                     </button>
                   </div>
                 </td>
               </tr>
+              <tr v-if="!visiveis.length"><td colspan="7" class="lx-empty">Nenhuma unidade encontrada com esses filtros.</td></tr>
             </tbody>
           </table>
         </div>
-      </div>
-      <div class="pb-dialog-footer">
-        <button class="pb-btn-primary pb-btn-indigo" @click="dialogRelatorios=false">Fechar</button>
-      </div>
-    </div>
-  </v-dialog>
+        <div v-if="totalPags > 1" class="uc-pag">
+          <button class="lx-icon-btn" :disabled="pagina === 1" aria-label="Página anterior" @click="pagina--">‹</button>
+          <span>Página <b>{{ pagina }}</b> de {{ totalPags }}</span>
+          <button class="lx-icon-btn" :disabled="pagina === totalPags" aria-label="Próxima página" @click="pagina++">›</button>
+        </div>
+      </template>
+    </section>
 
-  <!-- Dialog: Editar Relatório -->
-  <v-dialog v-model="dialogRelatoriosEditar" max-width="620">
-    <div class="pb-dialog">
-      <div class="pb-dialog-hd" style="background:linear-gradient(135deg,#4F46E5,#7C3AED)">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-        <span>Editando Relatório #{{ idRelaEdit }}</span>
-        <button class="pb-dialog-close" @click="dialogRelatoriosEditar=false">✕</button>
+    <!-- ═══ Dialog: porcentagens ═══ -->
+    <LxDialog v-model="dlgPorc" titulo="Porcentagens da unidade" :subtitulo="atual ? `${atual.uc} · ${atual.nome}` : ''" icone="%" cor="var(--teal)" :largura="580">
+      <div class="uc-dlg-sec">
+        <div class="uc-dlg-sec-hd"><b>Ativas</b><span class="lx-pill" style="--c:var(--teal)">{{ nf(somaAtivas, 2) }}% no total</span></div>
+        <div v-for="p in porcAtivas" :key="p.id" class="uc-porc">
+          <span class="uc-porc-us"><b>{{ usinaPorId.get(p.idGeradora)?.nome ?? `Usina ${p.idGeradora}` }}</b><small>UC {{ usinaPorId.get(p.idGeradora)?.uc ?? '—' }} · desde {{ formatarData(p.data_inicio) }}</small></span>
+          <b class="uc-porc-v">{{ p.porcentagem }}%</b>
+          <button class="lx-icon-btn uc-ib" style="--c:var(--red)" title="Remover" @click="excluirPorc(p.id)">×</button>
+        </div>
+        <p v-if="!porcAtivas.length" class="lx-empty">Nenhuma porcentagem ativa.</p>
       </div>
-      <div class="pb-dialog-body">
-        <div v-if="showErrorAlertEdit"   class="pb-alert pb-alert-err">Erro ao editar relatório!</div>
-        <div v-if="showErrorCampoEdit"   class="pb-alert pb-alert-err">Preencha todos os campos!</div>
-        <div v-if="showSuccessAlertEdit" class="pb-alert pb-alert-ok">Relatório editado com sucesso!</div>
-        <div class="pb-form-grid">
-          <div class="pb-fg">
-            <label class="pb-flbl">Mês</label>
-            <select v-model="mesRelUniEdit" class="pb-select" disabled>
-              <option v-for="m in meses" :key="m" :value="m">{{ m }}</option>
-            </select>
-          </div>
-          <div class="pb-fg">
-            <label class="pb-flbl">Ano</label>
-            <select v-model="anoRelUniEdit" class="pb-select" disabled>
-              <option v-for="a in anos" :key="a" :value="a">{{ a }}</option>
-            </select>
-          </div>
-          <div class="pb-fg"><label class="pb-flbl">Consumo (kWh)</label><input v-model="consumoUniEdit"   type="number" class="pb-input" /></div>
-          <div class="pb-fg"><label class="pb-flbl">Consumo (R$)</label><input v-model="valorConUniEdit"  type="number" class="pb-input" /></div>
-          <div class="pb-fg"><label class="pb-flbl">Ener. Inj-TUSD (kWh)</label><input v-model="enerTusdUniEdit"  type="number" class="pb-input" /></div>
-          <div class="pb-fg"><label class="pb-flbl">Valor TUSD (R$)</label><input v-model="valorTusdUniEdit" type="number" class="pb-input" /></div>
-          <div class="pb-fg"><label class="pb-flbl">Ener. Inj-TE (kWh)</label><input v-model="enerTeUniEdit"    type="number" class="pb-input" /></div>
-          <div class="pb-fg"><label class="pb-flbl">Valor TE (R$)</label><input v-model="valorTeUniEdit"  type="number" class="pb-input" /></div>
+      <div class="uc-dlg-sec">
+        <div class="uc-dlg-sec-hd"><b>Histórico</b></div>
+        <div v-for="p in porcHist" :key="p.id" class="uc-porc hist">
+          <span class="uc-porc-us"><b>{{ usinaPorId.get(p.idGeradora)?.nome ?? `Usina ${p.idGeradora}` }}</b><small>{{ formatarData(p.data_inicio) }} → {{ formatarData(p.data_fim) }}</small></span>
+          <b class="uc-porc-v">{{ p.porcentagem }}%</b>
+        </div>
+        <p v-if="!porcHist.length" class="lx-empty">Sem histórico.</p>
+      </div>
+      <template #rodape>
+        <button class="lx-btn-ghost" @click="abrirGeradora(atual); dlgPorc = false">+ Adicionar geradora</button>
+        <span class="sp"></span>
+        <button class="lx-btn-ghost" @click="dlgPorc = false">Fechar</button>
+      </template>
+    </LxDialog>
+
+    <!-- ═══ Dialog: adicionar geradora ═══ -->
+    <LxDialog v-model="dlgGeradora" titulo="Adicionar geradora" :subtitulo="atual ? `${atual.uc} · ${atual.nome}` : ''" icone="⚡" cor="var(--orange)" :largura="520">
+      <div v-if="msgGer" class="lx-alert" :class="msgGer.t">{{ msgGer.txt }}</div>
+      <div class="lx-form">
+        <div class="lx-field full"><label for="uc-ger-us">Usina</label>
+          <select id="uc-ger-us" v-model="fGer.usina" class="lx-input">
+            <option disabled value="">Selecione a usina…</option>
+            <option v-for="u in usinas" :key="u.id" :value="u.id">{{ u.uc }} — {{ u.nome }}</option>
+          </select>
+        </div>
+        <div class="lx-field full"><label for="uc-ger-p">Porcentagem (%)</label><input id="uc-ger-p" v-model="fGer.porcentagem" type="number" class="lx-input" placeholder="0" /></div>
+      </div>
+      <template #rodape>
+        <button class="lx-btn-ghost" @click="dlgGeradora = false">Fechar</button>
+        <button class="lx-btn" style="--c1:var(--orange);--c2:var(--red)" :disabled="salvandoGer" @click="salvarGeradora">{{ salvandoGer ? 'Salvando…' : 'Salvar' }}</button>
+      </template>
+    </LxDialog>
+
+    <!-- ═══ Dialog: nova / editar unidade ═══ -->
+    <LxDialog v-model="dlgUnidade" :titulo="editando ? 'Editar unidade' : 'Nova unidade'" :subtitulo="editando ? `${fUni.uc} · ${fUni.nome}` : 'Cadastro de unidade consumidora'" :icone="editando ? '✎' : '+'" :cor="editando ? 'var(--purple)' : 'var(--green)'" :largura="720">
+      <div v-if="msgUni" class="lx-alert" :class="msgUni.t">{{ msgUni.txt }}</div>
+      <div class="lx-form">
+        <div class="lx-field"><label>UC</label><input v-model="fUni.uc" type="number" class="lx-input" placeholder="Número da UC" /></div>
+        <div class="lx-field"><label>Nome</label><input v-model="fUni.nome" class="lx-input" placeholder="Nome da unidade" /></div>
+        <div class="lx-field"><label>Data início</label><input v-model="fUni.dataInicio" type="date" class="lx-input" /></div>
+        <div class="lx-field"><label>Consumo médio (kWh)</label><input v-model="fUni.mediaConsumo" type="number" class="lx-input" placeholder="0" /></div>
+        <div class="lx-field"><label>Valor kWh (R$)</label><input v-model="fUni.valorKWH" type="number" class="lx-input" placeholder="0,00" /></div>
+        <div class="lx-field"><label>CEP</label><input v-model="fUni.cep" type="number" class="lx-input" placeholder="CEP" /></div>
+        <div class="lx-field full"><label>Endereço</label><input v-model="fUni.endereco" class="lx-input" placeholder="Endereço completo" /></div>
+        <div class="lx-field full"><label>Secretaria</label>
+          <div class="lx-seg"><button v-for="s in SECS" :key="s.v" type="button" :class="{ on: fUni.secretaria === s.v }" :style="{ '--c': s.c }" @click="fUni.secretaria = s.v">{{ s.txt }}</button></div>
+        </div>
+        <div class="lx-field"><label>Status</label>
+          <div class="lx-seg"><button v-for="st in STATUS" :key="st.v" type="button" :class="{ on: fUni.status === st.v }" :style="{ '--c': st.c }" @click="fUni.status = st.v">{{ st.um }}</button></div>
+        </div>
+        <div class="lx-field"><label>Tensão</label>
+          <div class="lx-seg"><button v-for="t in ['BT', 'MT']" :key="t" type="button" :class="{ on: fUni.tensao === t }" @click="fUni.tensao = t">{{ t }}</button></div>
         </div>
       </div>
-      <div class="pb-dialog-footer">
-        <button class="pb-btn-secondary" @click="dialogRelatoriosEditar=false">Cancelar</button>
-        <button class="pb-btn-primary pb-btn-indigo" @click="saveChangesRelatorio(idRelaEdit)">Salvar edição</button>
-      </div>
-    </div>
-  </v-dialog>
+      <template #rodape>
+        <button class="lx-btn-ghost" @click="dlgUnidade = false">Fechar</button>
+        <button class="lx-btn" :style="editando ? '--c1:var(--purple);--c2:var(--teal)' : '--c1:var(--green);--c2:var(--teal)'" :disabled="salvandoUni" @click="salvarUnidade">
+          {{ salvandoUni ? 'Salvando…' : editando ? 'Salvar edição' : 'Adicionar' }}
+        </button>
+      </template>
+    </LxDialog>
 
-</div>
+    <!-- ═══ Dialog: excluir unidade ═══ -->
+    <LxDialog v-model="dlgExcluir" titulo="Excluir unidade" icone="!" cor="var(--red)" :largura="440">
+      <p class="uc-excl">Tem certeza que deseja excluir esta unidade? Essa ação não pode ser desfeita.</p>
+      <div v-if="atual" class="lx-dl">
+        <div><span>UC</span><b>{{ atual.uc }}</b></div>
+        <div><span>Nome</span><b>{{ atual.nome }}</b></div>
+        <div><span>Secretaria</span><b>{{ secDe(atual.secretaria).txt }}</b></div>
+      </div>
+      <template #rodape>
+        <button class="lx-btn-ghost" @click="dlgExcluir = false">Cancelar</button>
+        <button class="lx-btn danger" :disabled="excluindo" @click="excluirUnidade">{{ excluindo ? 'Excluindo…' : 'Confirmar exclusão' }}</button>
+      </template>
+    </LxDialog>
+
+    <!-- ═══ Dialog: relatórios por ano ═══ -->
+    <LxDialog v-model="dlgRelatorios" titulo="Relatórios da unidade" :subtitulo="atual ? `${atual.uc} · ${atual.nome}` : ''" icone="▤" cor="var(--teal)" :largura="820">
+      <div v-if="carregandoRel && !relatorios.length" class="lx-loading"><span class="lx-spin"></span><b>Carregando relatórios…</b></div>
+      <template v-else>
+        <div class="uc-anos">
+          <button v-for="a in anosRel" :key="a.ano" class="uc-ano" :class="{ on: anoRel === a.ano }" @click="anoRel = a.ano">
+            {{ a.ano }}<small>{{ a.qtd }}/12</small>
+          </button>
+          <p v-if="!anosRel.length" class="uc-sem">Nenhum relatório lançado para esta unidade.</p>
+        </div>
+        <div v-if="anoRel" class="uc-meses">
+          <article v-for="m in mesesRel" :key="m.mes" class="uc-mes" :class="{ vazio: !m.rel }">
+            <header><b>{{ m.nome }}</b><span class="lx-mono">{{ MESES_CURTO[m.mes - 1] }}/{{ anoRel }}</span></header>
+            <template v-if="m.rel">
+              <div class="uc-mes-v"><span>Consumo</span><b>{{ nf(m.rel.consumokWh) }} kWh</b></div>
+              <div class="uc-mes-v"><span>Valor</span><b>R$ {{ nf(m.rel.consumoReais, 2) }}</b></div>
+              <div class="uc-mes-v"><span>Inj. TE</span><b>{{ nf(m.rel.enerInjTE) }} kWh</b></div>
+              <div class="uc-mes-ac">
+                <button class="lx-btn-ghost sm" style="--c:var(--purple)" @click="abrirEditarRel(m.rel)">Editar</button>
+                <button class="lx-icon-btn uc-ib" style="--c:var(--red)" title="Excluir relatório" @click="excluirRelatorio(m.rel)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+                </button>
+              </div>
+            </template>
+            <button v-else class="uc-mes-add" @click="abrirNovoRel(null, m.mes, anoRel)">+ Lançar</button>
+          </article>
+        </div>
+      </template>
+      <template #rodape>
+        <button class="lx-btn-ghost" style="--c:var(--green)" @click="abrirNovoRel(null)">+ Novo relatório</button>
+        <span class="sp"></span>
+        <button class="lx-btn-ghost" @click="dlgRelatorios = false">Fechar</button>
+      </template>
+    </LxDialog>
+
+    <!-- ═══ Dialog: novo / editar relatório ═══ -->
+    <LxDialog v-model="dlgRel" :titulo="relEditando ? `Editar relatório · ${MESES[fRel.mes - 1] ?? ''}/${fRel.ano}` : 'Novo relatório mensal'" :subtitulo="atual ? `${atual.uc} · ${atual.nome}` : ''"
+      :icone="relEditando ? '✎' : '+'" :cor="relEditando ? 'var(--purple)' : 'var(--green)'" :largura="640">
+      <div v-if="msgRel" class="lx-alert" :class="msgRel.t">{{ msgRel.txt }}</div>
+      <div class="lx-form">
+        <div class="lx-field"><label>Mês</label>
+          <select v-model="fRel.mes" class="lx-input" :disabled="!!relEditando">
+            <option disabled value="">Mês</option>
+            <option v-for="(m, i) in MESES" :key="m" :value="i + 1">{{ m }}</option>
+          </select>
+        </div>
+        <div class="lx-field"><label>Ano</label>
+          <select v-model="fRel.ano" class="lx-input" :disabled="!!relEditando">
+            <option disabled value="">Ano</option>
+            <option v-for="a in ANOS_FORM" :key="a" :value="a">{{ a }}</option>
+          </select>
+        </div>
+        <div v-for="c in CAMPOS_REL" :key="c.k" class="lx-field"><label>{{ c.txt }}</label><input v-model="fRel[c.k]" type="number" step="0.01" class="lx-input" :placeholder="c.ph" /></div>
+      </div>
+      <template #rodape>
+        <button class="lx-btn-ghost" @click="dlgRel = false">Fechar</button>
+        <button class="lx-btn" :style="relEditando ? '--c1:var(--purple);--c2:var(--teal)' : '--c1:var(--green);--c2:var(--teal)'" :disabled="salvandoRel" @click="salvarRel">
+          {{ salvandoRel ? 'Salvando…' : relEditando ? 'Salvar edição' : 'Salvar' }}
+        </button>
+      </template>
+    </LxDialog>
+
+    <!-- aviso -->
+    <Transition name="uc-toast">
+      <div v-if="toast" class="uc-toast" :class="{ err: toast.erro }" role="status" @click="toast = null">{{ toast.txt }}</div>
+    </Transition>
+  </div>
 </template>
 
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=DM+Mono:wght@400;500&display=swap');
-
-/* ══════ ROOT ══════ */
-.pb-root { min-height:100vh!important; background:#F0FDF9!important; font-family:'Plus Jakarta Sans',system-ui,sans-serif!important; color:#0f172a!important; padding-bottom:40px!important; }
-
-/* ══════ HEADER ══════ */
-.pb-header { background:linear-gradient(135deg,#ECFDF5 0%,#EEF2FF 100%)!important; border-bottom:1px solid #E2E8F0!important; padding:24px 28px 20px!important; margin-bottom:28px!important; display:flex!important; align-items:center!important; justify-content:space-between!important; overflow:hidden!important; }
-.pb-header-left { display:flex!important; align-items:center!important; gap:16px!important; }
-.pb-header-icon { width:48px!important; height:48px!important; border-radius:13px!important; background:#059669!important; display:flex!important; align-items:center!important; justify-content:center!important; box-shadow:0 4px 14px rgba(5,150,105,.3)!important; flex-shrink:0!important; }
-.pb-breadcrumb { display:flex!important; align-items:center!important; gap:5px!important; font-size:11px!important; color:#94A3B8!important; margin-bottom:3px!important; }
-.pb-breadcrumb a { color:#059669!important; text-decoration:none!important; font-weight:600!important; }
-.pb-title { font-size:26px!important; font-weight:900!important; letter-spacing:-.03em!important; color:#0f172a!important; margin:0 0 3px!important; line-height:1!important; }
-.pb-sub { font-size:13px!important; color:#64748b!important; margin:0!important; }
-.pb-header-img { height:110px!important; opacity:.85!important; }
-
-/* ══════ KPI ══════ */
-.pb-kpi-row { display:grid!important; grid-template-columns:repeat(4,1fr)!important; gap:12px!important; padding:0 28px 28px!important; }
-.pb-kpi { background:#fff!important; border:1px solid #f1f5f9!important; border-radius:14px!important; padding:16px 14px 14px!important; position:relative!important; overflow:hidden!important; display:flex!important; flex-direction:column!important; transition:transform .18s,box-shadow .18s!important; }
-.pb-kpi:hover { transform:translateY(-3px)!important; box-shadow:0 8px 24px rgba(0,0,0,.08)!important; }
-.pb-kpi::before { content:''!important; position:absolute!important; top:0!important; left:0!important; right:0!important; height:2px!important; }
-.pb-kpi-indigo::before { background:#4F46E5!important; } .pb-kpi-green::before { background:#059669!important; }
-.pb-kpi-amber::before  { background:#D97706!important; } .pb-kpi-violet::before{ background:#7C3AED!important; }
-.pb-kpi-badge { position:absolute!important; top:13px!important; right:13px!important; width:28px!important; height:28px!important; border-radius:8px!important; display:flex!important; align-items:center!important; justify-content:center!important; }
-.pb-kpi-indigo .pb-kpi-badge { background:#EEF2FF!important; color:#4F46E5!important; }
-.pb-kpi-green  .pb-kpi-badge { background:#ECFDF5!important; color:#059669!important; }
-.pb-kpi-amber  .pb-kpi-badge { background:#FFFBEB!important; color:#D97706!important; }
-.pb-kpi-violet .pb-kpi-badge { background:#F5F3FF!important; color:#7C3AED!important; }
-.pb-kpi-badge svg { stroke:currentColor!important; }
-.pb-kpi-label { font-size:10px!important; font-weight:700!important; letter-spacing:.12em!important; text-transform:uppercase!important; color:#94A3B8!important; display:block!important; margin-bottom:8px!important; margin-top:2px!important; }
-.pb-kpi-val   { font-size:30px!important; font-weight:900!important; letter-spacing:-.03em!important; line-height:1!important; display:block!important; margin-bottom:4px!important; }
-.pb-kpi-note  { font-size:11px!important; color:#94A3B8!important; font-weight:500!important; display:block!important; }
-.pb-kpi-indigo .pb-kpi-val { color:#4F46E5!important; } .pb-kpi-green .pb-kpi-val  { color:#059669!important; }
-.pb-kpi-amber  .pb-kpi-val { color:#D97706!important; } .pb-kpi-violet .pb-kpi-val { color:#7C3AED!important; }
-.pb-kpi-bottom { position:absolute!important; bottom:0!important; left:0!important; right:0!important; height:36px!important; opacity:.04!important; }
-.pb-kpi-indigo .pb-kpi-bottom { background:#4F46E5!important; } .pb-kpi-green .pb-kpi-bottom  { background:#059669!important; }
-.pb-kpi-amber  .pb-kpi-bottom { background:#D97706!important; } .pb-kpi-violet .pb-kpi-bottom { background:#7C3AED!important; }
-
-/* ══════ BODY ══════ */
-.pb-body { padding:0 28px!important; }
-.pb-table-card { background:#fff!important; border:1px solid #E2E8F0!important; border-radius:16px!important; overflow:hidden!important; box-shadow:0 1px 6px rgba(0,0,0,.05)!important; }
-.pb-card-hd { display:flex!important; align-items:center!important; justify-content:space-between!important; padding:18px 22px!important; border-bottom:1px solid #F1F5F9!important; background:#FAFBFF!important; gap:12px!important; flex-wrap:wrap!important; }
-.pb-card-hd-left { display:flex!important; align-items:center!important; gap:12px!important; }
-.pb-card-num { width:32px!important; height:32px!important; border-radius:9px!important; background:#059669!important; color:#fff!important; display:flex!important; align-items:center!important; justify-content:center!important; font-size:13px!important; font-weight:900!important; flex-shrink:0!important; }
-.pb-card-title { font-size:16px!important; font-weight:800!important; color:#0f172a!important; margin:0 0 2px!important; display:block!important; }
-.pb-card-sub   { font-size:12px!important; color:#64748b!important; margin:0!important; }
-
-/* Botão adicionar */
-.pb-btn-add { display:flex!important; align-items:center!important; gap:7px!important; font-family:'Plus Jakarta Sans',system-ui,sans-serif!important; font-size:12px!important; font-weight:800!important; background:#059669!important; color:#fff!important; border:none!important; border-radius:10px!important; padding:9px 18px!important; cursor:pointer!important; box-shadow:0 2px 8px rgba(5,150,105,.3)!important; transition:all .15s!important; }
-.pb-btn-add:hover { background:#047857!important; transform:translateY(-1px)!important; }
-.pb-btn-add svg { stroke:#fff!important; }
-
-/* Filtros */
-.pb-filters { display:flex!important; align-items:center!important; gap:12px!important; padding:14px 22px!important; border-bottom:1px solid #F1F5F9!important; flex-wrap:wrap!important; }
-.pb-filters-lbl { font-size:10px!important; font-weight:700!important; letter-spacing:.1em!important; text-transform:uppercase!important; color:#94A3B8!important; }
-.pb-filter-chips { display:flex!important; gap:6px!important; flex-wrap:wrap!important; }
-.pb-chip { padding:5px 14px!important; border-radius:20px!important; border:1.5px solid #E2E8F0!important; background:#F8FAFC!important; color:#64748b!important; font-size:12px!important; font-weight:700!important; cursor:pointer!important; transition:all .13s!important; font-family:'Plus Jakarta Sans',system-ui,sans-serif!important; }
-.pb-chip:hover { border-color:#94A3B8!important; color:#0f172a!important; }
-.pb-chip-active { color:#fff!important; }
-.pb-chip-slate.pb-chip-active  { background:#475569!important; border-color:#475569!important; }
-.pb-chip-indigo.pb-chip-active { background:#4F46E5!important; border-color:#4F46E5!important; }
-.pb-chip-green.pb-chip-active  { background:#059669!important; border-color:#059669!important; }
-.pb-chip-amber.pb-chip-active  { background:#D97706!important; border-color:#D97706!important; }
-
-/* Tabela */
-.pb-tbl-wrap { overflow-x:auto!important; }
-.pb-table { width:100%!important; border-collapse:collapse!important; font-size:13px!important; font-family:'Plus Jakarta Sans',system-ui,sans-serif!important; }
-.pb-thead th { background:#059669!important; color:#ffffff!important; }
-.pb-th { font-size:10px!important; font-weight:700!important; letter-spacing:.07em!important; text-transform:uppercase!important; padding:11px 14px!important; text-align:left!important; white-space:nowrap!important; border:none!important; }
-.pb-tr:hover td { background:#F0FDF9!important; }
-.pb-tr-alt td { background:#FAFBFF!important; }
-.pb-td { padding:9px 14px!important; border-bottom:1px solid #F1F5F9!important; color:#0f172a!important; vertical-align:middle!important; }
-.pb-mono { font-family:'DM Mono',monospace!important; font-size:11px!important; color:#64748b!important; }
-
-/* Pills na tabela */
-.pb-tensao-pill { display:inline-block!important; background:#F8FAFC!important; border:1px solid #E2E8F0!important; color:#475569!important; font-size:11px!important; font-weight:700!important; padding:2px 9px!important; border-radius:20px!important; }
-.pb-status-pill { display:inline-flex!important; align-items:center!important; gap:5px!important; font-size:11px!important; font-weight:700!important; padding:3px 10px!important; border-radius:20px!important; }
-.pb-status-green { background:#ECFDF5!important; color:#047857!important; border:1px solid #A7F3D0!important; }
-.pb-status-amber { background:#FFFBEB!important; color:#92400E!important; border:1px solid #FDE68A!important; }
-.pb-status-red   { background:#FFF1F2!important; color:#9F1239!important; border:1px solid #FECDD3!important; }
-.pb-status-dot   { width:6px!important; height:6px!important; border-radius:50%!important; background:currentColor!important; opacity:.7!important; }
-.pb-sec-pill { display:inline-block!important; font-size:11px!important; font-weight:700!important; padding:3px 10px!important; border-radius:20px!important; }
-.pb-sec-indigo { background:#EEF2FF!important; color:#4F46E5!important; }
-.pb-sec-green  { background:#ECFDF5!important; color:#059669!important; }
-.pb-sec-amber  { background:#FFFBEB!important; color:#D97706!important; }
-.pb-off-pill { font-size:11px!important; color:#94A3B8!important; }
-
-/* Botões de ação na tabela */
-.pb-actions-row { display:flex!important; align-items:center!important; gap:4px!important; }
-.pb-icon-btn { width:30px!important; height:30px!important; border-radius:8px!important; border:none!important; display:flex!important; align-items:center!important; justify-content:center!important; cursor:pointer!important; transition:all .13s!important; flex-shrink:0!important; }
-.pb-icon-btn svg { stroke:currentColor!important; }
-.pb-icon-indigo { background:#EEF2FF!important; color:#4F46E5!important; }
-.pb-icon-indigo:hover { background:#4F46E5!important; color:#fff!important; }
-.pb-icon-amber  { background:#FFFBEB!important; color:#D97706!important; }
-.pb-icon-amber:hover  { background:#D97706!important; color:#fff!important; }
-.pb-icon-slate  { background:#F1F5F9!important; color:#475569!important; }
-.pb-icon-slate:hover  { background:#475569!important; color:#fff!important; }
-.pb-icon-red    { background:#FFF1F2!important; color:#E11D48!important; }
-.pb-icon-red:hover    { background:#E11D48!important; color:#fff!important; }
-
-/* ══════ DIALOGS ══════ */
-.pb-dialog { background:#fff!important; border-radius:16px!important; overflow:hidden!important; box-shadow:0 20px 60px rgba(0,0,0,.18)!important; font-family:'Plus Jakarta Sans',system-ui,sans-serif!important; }
-.pb-dialog-hd { display:flex!important; align-items:center!important; gap:10px!important; padding:16px 20px!important; color:#fff!important; }
-.pb-dialog-hd span { font-size:15px!important; font-weight:800!important; flex:1!important; }
-.pb-dialog-close { width:28px!important; height:28px!important; border-radius:7px!important; border:none!important; background:rgba(255,255,255,.2)!important; color:#fff!important; cursor:pointer!important; font-size:13px!important; display:flex!important; align-items:center!important; justify-content:center!important; transition:background .13s!important; }
-.pb-dialog-close:hover { background:rgba(255,255,255,.35)!important; }
-.pb-dialog-body { padding:20px!important; max-height:70vh!important; overflow-y:auto!important; }
-.pb-dialog-footer { display:flex!important; justify-content:flex-end!important; gap:10px!important; padding:14px 20px!important; border-top:1px solid #F1F5F9!important; background:#FAFBFF!important; }
-.pb-dialog-divider { height:1px!important; background:#F1F5F9!important; margin:14px 0!important; }
-.pb-dialog-info { display:flex!important; flex-direction:column!important; gap:4px!important; background:#F8FAFC!important; border:1px solid #E2E8F0!important; border-radius:10px!important; padding:12px 14px!important; }
-.pb-info-row { font-size:13px!important; color:#475569!important; }
-.pb-info-row strong { color:#0f172a!important; font-weight:700!important; }
-.pb-dialog-section-lbl { font-size:10px!important; font-weight:700!important; letter-spacing:.1em!important; text-transform:uppercase!important; color:#94A3B8!important; margin-bottom:8px!important; display:block!important; }
-
-/* Alertas no dialog */
-.pb-alert { display:flex!important; align-items:center!important; gap:8px!important; padding:10px 14px!important; border-radius:10px!important; font-size:13px!important; font-weight:600!important; margin-bottom:12px!important; }
-.pb-alert-ok  { background:#ECFDF5!important; color:#047857!important; border:1px solid #A7F3D0!important; }
-.pb-alert-err { background:#FFF1F2!important; color:#9F1239!important; border:1px solid #FECDD3!important; }
-
-/* Form */
-.pb-form-grid { display:grid!important; grid-template-columns:1fr 1fr!important; gap:14px!important; }
-.pb-fg { display:flex!important; flex-direction:column!important; gap:6px!important; }
-.pb-fg-full { grid-column:1/-1!important; }
-.pb-flbl { font-size:10px!important; font-weight:700!important; letter-spacing:.1em!important; text-transform:uppercase!important; color:#64748b!important; }
-.pb-input, .pb-select {
-  font-family:'Plus Jakarta Sans',system-ui,sans-serif!important; font-size:13px!important; font-weight:600!important; color:#0f172a!important;
-  background:#F8FAFC!important; border:1.5px solid #E2E8F0!important; border-radius:10px!important; padding:9px 12px!important;
-  outline:none!important; transition:border-color .14s,box-shadow .14s!important; width:100%!important;
+<style scoped>
+/* ── Secretarias ── */
+.uc-secs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+.uc-sec {
+  all: unset; box-sizing: border-box; cursor: pointer; position: relative; overflow: hidden; display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px; border-radius: 18px; background: var(--card); border: 1px solid var(--line); backdrop-filter: blur(10px);
+  transition: transform .2s, border-color .2s, box-shadow .2s, background .2s;
 }
-.pb-input:focus, .pb-select:focus { border-color:#059669!important; background:#fff!important; box-shadow:0 0 0 3px rgba(5,150,105,.1)!important; }
+.uc-sec::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--c); box-shadow: 0 0 14px var(--c); }
+.uc-sec:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--c) 45%, transparent); }
+.uc-sec.on { border-color: var(--c); box-shadow: 0 0 34px -14px var(--c); background: linear-gradient(135deg, color-mix(in srgb, var(--c) 16%, transparent), var(--card) 70%); }
+.uc-sec:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.uc-sec-ic { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; flex: none; font-size: 16px; color: var(--c); background: color-mix(in srgb, var(--c) 16%, transparent); }
+.uc-sec-tx { display: flex; flex-direction: column; min-width: 0; }
+.uc-sec-tx small { font-size: 11.5px; color: var(--mut); }
+.uc-sec-tx b { font-size: 24px; font-weight: 700; line-height: 1.15; color: var(--c); }
+.uc-sec-tx em { font-style: normal; font-size: 11px; color: var(--mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* Radio customizado */
-.pb-radio-group { display:flex!important; gap:6px!important; flex-wrap:wrap!important; }
-.pb-radio { padding:6px 14px!important; border-radius:20px!important; border:1.5px solid #E2E8F0!important; background:#F8FAFC!important; color:#64748b!important; font-size:12px!important; font-weight:700!important; cursor:pointer!important; transition:all .13s!important; font-family:'Plus Jakarta Sans',system-ui,sans-serif!important; }
-.pb-radio:hover { border-color:#94A3B8!important; }
-.pb-radio-on       { background:#4F46E5!important; border-color:#4F46E5!important; color:#fff!important; }
-.pb-radio-on-green { background:#059669!important; border-color:#059669!important; color:#fff!important; }
-.pb-radio-on-red   { background:#E11D48!important; border-color:#E11D48!important; color:#fff!important; }
-.pb-radio-on-amber { background:#D97706!important; border-color:#D97706!important; color:#fff!important; }
-
-/* Botões dialog */
-.pb-btn-secondary { font-family:'Plus Jakarta Sans',system-ui,sans-serif!important; font-size:12px!important; font-weight:700!important; background:#F8FAFC!important; color:#475569!important; border:1.5px solid #E2E8F0!important; border-radius:10px!important; padding:9px 18px!important; cursor:pointer!important; transition:all .14s!important; }
-.pb-btn-secondary:hover { background:#F1F5F9!important; }
-.pb-btn-primary { font-family:'Plus Jakarta Sans',system-ui,sans-serif!important; font-size:12px!important; font-weight:800!important; color:#fff!important; border:none!important; border-radius:10px!important; padding:9px 20px!important; cursor:pointer!important; transition:all .14s!important; }
-.pb-btn-green  { background:#059669!important; box-shadow:0 2px 8px rgba(5,150,105,.3)!important; }
-.pb-btn-green:hover  { background:#047857!important; }
-.pb-btn-indigo { background:#4F46E5!important; box-shadow:0 2px 8px rgba(79,70,229,.3)!important; }
-.pb-btn-indigo:hover { background:#4338CA!important; }
-.pb-btn-red    { background:#E11D48!important; box-shadow:0 2px 8px rgba(225,29,72,.3)!important; }
-.pb-btn-red:hover    { background:#BE123C!important; }
-
-/* Porcentagens */
-.pb-pct-list { display:flex!important; flex-direction:column!important; gap:6px!important; }
-.pb-pct-item { display:flex!important; align-items:center!important; justify-content:space-between!important; background:#F8FAFC!important; border:1px solid #E2E8F0!important; border-radius:10px!important; padding:10px 14px!important; }
-.pb-pct-hist { opacity:.65!important; }
-.pb-pct-info { display:flex!important; align-items:center!important; gap:10px!important; }
-.pb-pct-uc   { font-family:'DM Mono',monospace!important; font-size:12px!important; color:#64748b!important; }
-.pb-pct-val  { font-size:14px!important; font-weight:900!important; color:#059669!important; }
-.pb-pct-period { font-size:11px!important; color:#94A3B8!important; }
-.pb-empty-msg  { font-size:12px!important; color:#94A3B8!important; text-align:center!important; padding:12px!important; }
-
-/* Excluir dialog */
-.pb-excluir-box { display:flex!important; flex-direction:column!important; align-items:center!important; gap:10px!important; padding:16px 0!important; }
-.pb-excluir-icon { width:56px!important; height:56px!important; border-radius:14px!important; background:#FFF1F2!important; display:flex!important; align-items:center!important; justify-content:center!important; }
-.pb-excluir-msg  { font-size:14px!important; font-weight:700!important; color:#475569!important; text-align:center!important; margin:0!important; }
-
-/* Tabela dentro do dialog */
-.pb-rela-tbl-wrap { overflow-x:auto!important; border-radius:10px!important; border:1px solid #E2E8F0!important; }
-
-/* Responsivo */
-@media (max-width:900px) { .pb-kpi-row { grid-template-columns:1fr 1fr!important; } }
-@media (max-width:640px) {
-  .pb-header { padding:16px 20px!important; flex-direction:column!important; align-items:flex-start!important; }
-  .pb-header-img { display:none!important; }
-  .pb-title { font-size:22px!important; }
-  .pb-body, .pb-kpi-row { padding-left:16px!important; padding-right:16px!important; }
-  .pb-kpi-row { grid-template-columns:1fr 1fr!important; }
-  .pb-form-grid { grid-template-columns:1fr!important; }
+/* ── Status + tensão ── */
+.uc-sts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(0, .9fr); gap: 12px; margin-bottom: 18px; }
+.uc-st {
+  all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: 18px; cursor: pointer;
+  background: var(--card); border: 1px solid var(--line); backdrop-filter: blur(10px); transition: border-color .2s, box-shadow .2s;
 }
+button.uc-st:hover { border-color: color-mix(in srgb, var(--c) 45%, transparent); }
+.uc-st.on { border-color: var(--c); box-shadow: 0 0 30px -14px var(--c); }
+.uc-st:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.uc-st-hd { display: flex; align-items: center; justify-content: space-between; }
+.uc-st-hd span { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; color: var(--tx); }
+.uc-st-hd span i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); box-shadow: 0 0 8px var(--c); }
+.uc-st-hd b { font-size: 24px; font-weight: 700; color: var(--c); line-height: 1; }
+.uc-st-bar { display: flex; height: 6px; border-radius: 99px; overflow: hidden; gap: 2px; background: rgba(255, 255, 255, .05); }
+.uc-st-bar i { min-width: 0; }
+.uc-st-sec { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.uc-st-sec span { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--mut); }
+.uc-st-sec span i { width: 6px; height: 6px; border-radius: 2px; background: var(--s); }
+.uc-st-sec span b { color: var(--tx); font-weight: 600; }
+.uc-st-sec span.zero { opacity: .45; }
+.uc-tensao { cursor: default; --c: var(--teal); }
+.uc-ten { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: 1; }
+.uc-ten button {
+  all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 12px;
+  background: rgba(255, 255, 255, .03); border: 1px solid var(--line2); transition: border-color .2s, background .2s;
+}
+.uc-ten button:hover { border-color: rgba(34, 197, 224, .45); }
+.uc-ten button.on { border-color: var(--teal); background: rgba(34, 197, 224, .1); }
+.uc-ten button:focus-visible { outline: 2px solid #fff; }
+.uc-ten small { font-size: 10.5px; color: var(--mut); }
+.uc-ten b { font-size: 20px; font-weight: 700; line-height: 1.1; }
+.uc-ten em { font-style: normal; font: 600 10.5px var(--mono); color: var(--teal); }
+
+/* ── Lista ── */
+.uc-filtros { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.uc-busca { flex: 1 1 280px; }
+.uc-ativos { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11.5px; color: var(--mut); margin-bottom: 10px; }
+.uc-ativos .lx-pill { cursor: pointer; font-family: var(--font); }
+.uc-nome { min-width: 220px; }
+.uc-nome b { display: block; font-weight: 500; }
+.uc-nome small { display: block; font-size: 11px; color: var(--mut); margin-top: 2px; max-width: 380px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.uc-ten-pill { font: 600 11px var(--mono); padding: 3px 8px; border-radius: 8px; color: var(--teal); background: rgba(34, 197, 224, .12); }
+.uc-ten-pill.mt { color: var(--purple); background: rgba(168, 85, 247, .14); }
+.uc-off { font-size: 11px; color: var(--mut); }
+.uc-acoes { display: inline-flex; gap: 4px; }
+.uc-ib { --c: var(--teal); width: 30px; height: 30px; border-radius: 9px; color: var(--c); }
+.uc-ib svg { width: 14px; height: 14px; }
+.uc-ib:hover { background: color-mix(in srgb, var(--c) 16%, transparent); }
+.uc-pag { display: flex; align-items: center; justify-content: center; gap: 12px; padding-top: 14px; font-size: 12.5px; color: var(--mut); }
+.uc-pag b { color: var(--tx); }
+
+/* ── Dialogs ── */
+.uc-dlg-sec + .uc-dlg-sec { margin-top: 16px; }
+.uc-dlg-sec-hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 13px; }
+.uc-porc { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 12px; background: var(--card2); border: 1px solid var(--line2); margin-bottom: 6px; }
+.uc-porc.hist { opacity: .7; }
+.uc-porc-us { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.uc-porc-us b { font-size: 13px; font-weight: 500; }
+.uc-porc-us small { font-size: 11px; color: var(--mut); }
+.uc-porc-v { font: 600 14px var(--mono); color: var(--teal); }
+.uc-excl { margin: 0 0 12px; font-size: 13px; color: var(--mut); }
+
+.uc-anos { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.uc-ano {
+  all: unset; cursor: pointer; display: inline-flex; align-items: baseline; gap: 6px; padding: 7px 14px; border-radius: 12px; font: 600 13px var(--font);
+  border: 1px solid var(--line); color: var(--mut); background: rgba(255, 255, 255, .04); transition: background .2s, color .2s, border-color .2s;
+}
+.uc-ano small { font: 500 10.5px var(--mono); opacity: .8; }
+.uc-ano:hover { color: var(--tx); }
+.uc-ano.on { color: #06101a; background: var(--teal); border-color: transparent; box-shadow: 0 0 18px -4px var(--teal); }
+.uc-ano:focus-visible { outline: 2px solid #fff; }
+.uc-sem { margin: 0; font-size: 13px; color: var(--mut); }
+.uc-meses { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.uc-mes { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 14px; background: var(--card2); border: 1px solid var(--line); }
+.uc-mes header { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; margin-bottom: 2px; }
+.uc-mes header b { font-size: 13px; font-weight: 600; }
+.uc-mes header .lx-mono { font-size: 10.5px; }
+.uc-mes.vazio { border-style: dashed; background: transparent; }
+.uc-mes.vazio header b { color: var(--mut); }
+.uc-mes-v { display: flex; justify-content: space-between; gap: 6px; font-size: 11.5px; }
+.uc-mes-v span { color: var(--mut); }
+.uc-mes-v b { font-family: var(--mono); font-weight: 500; font-size: 11.5px; }
+.uc-mes-ac { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 4px; padding-top: 8px; border-top: 1px dashed var(--line2); }
+.uc-mes-add { all: unset; cursor: pointer; margin-top: auto; text-align: center; padding: 8px; border-radius: 10px; font-size: 12px; font-weight: 600; color: var(--green); background: rgba(52, 211, 122, .08); }
+.uc-mes-add:hover { background: rgba(52, 211, 122, .16); }
+.uc-mes-add:focus-visible { outline: 2px solid #fff; }
+
+/* ── Aviso ── */
+.uc-toast {
+  position: fixed; left: 50%; bottom: 110px; transform: translateX(-50%); z-index: 3000; cursor: pointer; padding: 11px 18px; border-radius: 14px;
+  font-size: 13px; font-weight: 500; color: var(--tx); background: var(--bg2); border: 1px solid rgba(52, 211, 122, .45);
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, .7), 0 0 30px -12px var(--green);
+}
+.uc-toast.err { border-color: rgba(255, 95, 109, .5); box-shadow: 0 10px 40px -10px rgba(0, 0, 0, .7), 0 0 30px -12px var(--red); }
+.uc-toast-enter-active, .uc-toast-leave-active { transition: opacity .25s, transform .25s; }
+.uc-toast-enter-from, .uc-toast-leave-to { opacity: 0; transform: translate(-50%, 12px); }
+
+@media (max-width: 1200px) { .uc-sts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 1000px) { .uc-secs { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .uc-secs, .uc-sts { grid-template-columns: 1fr 1fr; } .uc-sec-tx em { display: none; } }
+@media (max-width: 420px) { .uc-sts { grid-template-columns: 1fr; } }
 </style>

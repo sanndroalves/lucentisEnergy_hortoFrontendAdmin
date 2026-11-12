@@ -16,12 +16,12 @@ const username = computed(() => String(data.value?.username ?? '').replace(/"/g,
     <v-menu :close-on-content-click="false" location="bottom end" offset="10">
         <template v-slot:activator="{ props }">
             <button class="pdd-btn" v-bind="props" aria-label="Perfil e sair">
-                <img src="/images/users/avatar.png" alt="" class="pdd-avatar" />
+                <img src="/images/users/avatar-lx.svg" alt="" class="pdd-avatar" />
             </button>
         </template>
         <div class="pdd-card">
             <div class="pdd-user">
-                <span class="pdd-ring"><img src="/images/users/avatar.png" alt="" /></span>
+                <span class="pdd-ring"><img src="/images/users/avatar-lx.svg" alt="" /></span>
                 <div class="pdd-info">
                     <strong>{{ username || 'Usuário' }}</strong>
                     <span><i class="pdd-dot"></i>Conectado</span>

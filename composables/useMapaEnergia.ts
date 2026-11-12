@@ -269,13 +269,17 @@ import type {
   IndicadoresMapa,
 } from '~/types/energy';
 
-// TODO(backend): estas tarifas MT/BT deveriam vir de uma tabela versionada
-// por data no backend, não hardcoded no frontend — hoje qualquer reajuste
-// tarifário exige deploy de código.
-const TARIFA_BT = 0.88;
-const MT_TARIFAS = { TUSD_ponta: 1.66642019, TE_ponta: 0.5722216, TUSD_forap: 0.14734841, TE_forap: 0.34908095 };
-const tarifaMediaMT = () =>
-  MT_TARIFAS.TUSD_forap + MT_TARIFAS.TE_forap + (MT_TARIFAS.TUSD_ponta + MT_TARIFAS.TE_ponta) / 2 / 2;
+// Tarifas por período: Gerenciamento › Parâmetros (composables/useTarifas.ts).
+// Sem período cadastrado para o mês → mesmos valores que ficavam fixos aqui.
+// A fórmula MT deste arquivo foi mantida como era (fp + p/4), só os
+// componentes passaram a vir dos parâmetros.
+import { useTarifas, tarifaKwh, componentesMT } from '~/composables/useTarifas';
+const tarifaMediaMT = (ano: number, mes: number) => {
+  const c = componentesMT(ano, mes);
+  return c.tusdForaPonta + c.teForaPonta + (c.tusdPonta + c.tePonta) / 2 / 2;
+};
+const tarifaUsinaMes = (u: { tensao?: string | null }, ano: number, mes: number) =>
+  ((u.tensao || '').toUpperCase() !== 'BT' ? tarifaMediaMT(ano, mes) : tarifaKwh('BT', ano, mes));
 
 // TODO(backend): IDs 19/20 e as UCs '4000266381'/'37068768' são exceções
 // de negócio hardcoded (usinas com regra de faturamento diferente, UCs que
@@ -294,6 +298,7 @@ interface FontesDados {
 }
 
 export function useMapaEnergia({ usinas, unidades, geracoes, injecoes, compensa }: FontesDados) {
+  useTarifas(); // carrega os parâmetros (os computeds abaixo recalculam quando chegarem)
   const listaUsinas = computed(() => usinas.value ?? []);
   const listaUnidades = computed(() => unidades.value ?? []);
   const listaGeracoes = computed(() => geracoes.value ?? []);
@@ -404,13 +409,13 @@ export function useMapaEnergia({ usinas, unidades, geracoes, injecoes, compensa 
           .filter((i) => i.idGeradora == u.id && i.ano == ano && i.mes == mes)
           .reduce((acc, item) => acc + Number(item.injetadoPonta || 0) + Number(item.injetadoFPonta || 0), 0);
         const autoconsumo = Math.max(0, Number(gMes?.geracao || 0) - inj);
-        total += autoconsumo * ((u.tensao || '').toUpperCase() !== 'BT' ? tarifaMediaMT() : TARIFA_BT);
+        total += autoconsumo * tarifaUsinaMes(u, ano, mes);
       });
     listaUsinas.value
       .filter((u) => USINAS_EXCECAO.includes(u.id))
       .forEach((u) => {
         const gMes = listaGeracoes.value.find((g) => g.idGeradora == u.id && g.ano == ano && g.mes == mes);
-        total += Number(gMes?.geracao || 0) * ((u.tensao || '').toUpperCase() !== 'BT' ? tarifaMediaMT() : TARIFA_BT);
+        total += Number(gMes?.geracao || 0) * tarifaUsinaMes(u, ano, mes);
       });
     return Number(total.toFixed(2));
   };

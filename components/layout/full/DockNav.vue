@@ -5,8 +5,8 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 const NAV = [
   { n: 'Início', i: '◉', a: '--teal', b: '--green', to: '/', s: [] },
   { n: 'Fotovoltaico', i: '☀', a: '--orange', b: '--red', s: [['Usinas', '/usinas/'], ['Manutenções', '/manutencoes/'], ['Checklist', '/checklist/'], ['Gráficos', '/graficos/']] },
-  { n: 'Gerenciamento', i: '▦', a: '--purple', b: '--teal', s: [['Relatórios', '/relatorios/'], ['Lista de Rateio', '/lista/'], ['Dados', '/dados/']] },
-  { n: 'UCs Públicas', i: '✦', a: '--green', b: '--teal', s: [['Iluminação', '/iluminacao/'], ['Prédios', '/predios/']] },
+  { n: 'Gerenciamento', i: '▦', a: '--purple', b: '--teal', s: [['Relatórios', '/relatorios/'], ['Lista de Rateio', '/lista/'], ['Dados', '/dados/'], ['Parâmetros', '/parametros/']] },
+  { n: 'UCs Públicas', i: '✦', a: '--green', b: '--teal', to: '/predios/', s: [] },
 ];
 
 // Lê a rota direto do vue-router. O useRoute() do Nuxt, fora de uma página,
