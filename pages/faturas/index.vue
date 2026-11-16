@@ -52,7 +52,7 @@ const EVENTO = {
 const ERRO_TIPO = {
   AUTENTICACAO: 'Sessão CPFL expirada/inválida', BLOQUEIO_PORTAL: 'Bloqueio do portal (Cloudflare/CAPTCHA)',
   MUDANCA_INTERFACE: 'Possível mudança na API da CPFL', INDISPONIVEL: 'CPFL indisponível', UC_NAO_ENCONTRADA: 'UC não localizada na CPFL',
-  CANCELADA: 'Cancelada', ABORTADA: 'Abortada (sessão/bloqueio)', INTERNO: 'Erro interno', ARMAZENAMENTO: 'Falha ao gravar o PDF (R2)',
+  RECUSADO_PORTAL: 'CPFL recusou o atendimento da UC', CANCELADA: 'Cancelada', ABORTADA: 'Abortada (sessão/bloqueio)', INTERNO: 'Erro interno', ARMAZENAMENTO: 'Falha ao gravar o PDF (R2)',
 };
 const de = (mapa, k) => mapa[k] || { t: k || '—', c: 'var(--mut)' };
 
@@ -257,6 +257,7 @@ async function abrirSolicitar() {
 const ucsFiltradas = computed(() => {
   const b = sol.value.busca.trim().toLowerCase();
   return (unidades.value || [])
+    .filter(u => ['L', 'D'].includes(u.status) && (u.tensao || 'BT') === 'BT') // mesma regra do backend
     .filter(u => !b || String(u.uc).includes(b) || String(u.nome || '').toLowerCase().includes(b))
     .sort((a, z) => String(a.nome).localeCompare(String(z.nome)));
 });
@@ -429,7 +430,7 @@ const aguardandoColetor = computed(() => {
           </template>
           <p v-else class="ft-meta">Agendamento não encontrado (rode o migrate do app faturas).</p>
           <ul class="ft-regras">
-            <li>Só busca as competências que faltam, até o mês anterior, inclusive lacunas no meio do histórico</li>
+            <li>Busca todo o histórico que a CPFL tiver, só as competências que faltam, até o mês anterior</li>
             <li>Atualiza a situação de pagamento sem duplicar faturas</li>
             <li>PDFs guardados {{ resumo.armazenamento === 'R2' ? 'no Cloudflare R2' : 'no disco do servidor' }}</li>
           </ul>
@@ -722,8 +723,8 @@ const aguardandoColetor = computed(() => {
         </div>
       </div>
       <ul class="ft-regras ft-regras-dlg">
-        <li>Busca só as competências que faltam no Lucentis, até o mês anterior, incluindo lacunas no meio do histórico.</li>
-        <li>Entram UCs ligadas e desligadas. Faturas já coletadas só têm a situação de pagamento atualizada.</li>
+        <li>Busca todo o histórico que a CPFL tiver (mesmo antes do cadastro da UC), só as competências que faltam no Lucentis, até o mês anterior.</li>
+        <li>Entram UCs de baixa tensão ligadas e desligadas (em manutenção e MT ficam de fora). Faturas já coletadas só têm a situação de pagamento atualizada.</li>
         <li v-if="agenteModo">Quem acessa a CPFL é o coletor do notebook (roda a cada hora). Para começar já, execute o <b>executar.bat</b>.</li>
       </ul>
       <template v-if="sol.modo === 'algumas'">
@@ -741,7 +742,7 @@ const aguardandoColetor = computed(() => {
             <label :class="{ on: sol.sel.has(u.id) }">
               <input type="checkbox" :checked="sol.sel.has(u.id)" @change="alternar(u.id)" />
               <span class="ft-uc"><b>{{ u.nome }}</b><span class="lx-mono">{{ u.uc }}</span></span>
-              <span class="lx-pill" :style="{ '--c': (STATUS_UC_CAD[u.status] || {}).c || 'var(--mut)' }">{{ (STATUS_UC_CAD[u.status] || {}).t || u.status }}</span>
+              <span class="lx-pill" :style="{ '--c': STATUS_UC_CAD[u.status].c }">{{ STATUS_UC_CAD[u.status].t }}</span>
             </label>
           </li>
           <li v-if="!ucsFiltradas.length" class="lx-empty">Nenhuma UC encontrada.</li>
