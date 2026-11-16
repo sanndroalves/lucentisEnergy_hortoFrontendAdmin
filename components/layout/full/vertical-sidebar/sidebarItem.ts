@@ -85,6 +85,11 @@ const sidebarItem: menu[] = [
         // chip: '[MANUT]',
         // chipColor: 'error'
     },
+    {
+        title: 'Faturas CPFL',
+        icon: FileIcon,
+        to: '/faturas/'
+    },
 
     { header: `UC PÚBLICAS` },
     {
