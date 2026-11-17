@@ -5,7 +5,7 @@
 // redireciona para cá já filtrada.
 import { ref, computed, watch } from 'vue';
 import { useHead } from '@vueuse/head';
-import { API_BASE_URL, TENANT_HEADERS } from '~/base/link';
+import { API_BASE_URL } from '~/base/link';
 import { MESES, MESES_CURTO, nf } from '~/composables/useRelatorios';
 
 useHead({ title: 'UCs Públicas' });
@@ -29,9 +29,9 @@ const statusDe = (v) => STATUS.find(s => s.v === v) ?? { v, um: 'Desconhecido', 
 const ANOS_FORM = [2028, 2027, 2026, 2025, 2024, 2023];
 
 // ── dados (não bloqueiam a abertura da página) ───────────────
-const { data: unidadesRaw, pending: carregando, refresh: recarregarUnidades } = useLazyFetch(`${API_BASE_URL}/unidadecompensacao/`, { headers: TENANT_HEADERS, key: 'ucs-unidades', default: () => [] });
-const { data: usinasRaw } = useLazyFetch(`${API_BASE_URL}/usina/`, { headers: TENANT_HEADERS, key: 'ucs-usinas', default: () => [] });
-const { data: porcentagensRaw, refresh: recarregarPorcentagens } = useLazyFetch(`${API_BASE_URL}/porcentagem/`, { headers: TENANT_HEADERS, key: 'ucs-porcentagens', default: () => [] });
+const { data: unidadesRaw, pending: carregando, refresh: recarregarUnidades } = useLazyFetch(`${API_BASE_URL}/unidadecompensacao/`, { key: 'ucs-unidades', default: () => [] });
+const { data: usinasRaw } = useLazyFetch(`${API_BASE_URL}/usina/`, { key: 'ucs-usinas', default: () => [] });
+const { data: porcentagensRaw, refresh: recarregarPorcentagens } = useLazyFetch(`${API_BASE_URL}/porcentagem/`, { key: 'ucs-porcentagens', default: () => [] });
 
 const unidades = computed(() => unidadesRaw.value ?? []);
 const usinas = computed(() => usinasRaw.value ?? []);
@@ -102,7 +102,7 @@ const formatarData = (d) => { if (!d) return ''; const [y, m] = String(d).split(
 const abrirPorc = (u) => { atual.value = u; dlgPorc.value = true; };
 const excluirPorc = async (id) => {
   if (!confirm('Remover esta porcentagem?')) return;
-  try { await $fetch(`${API_BASE_URL}/porcentagem/${id}`, { headers: TENANT_HEADERS, method: 'DELETE' }); await recarregarPorcentagens(); avisar('Porcentagem removida.'); }
+  try { await $fetch(`${API_BASE_URL}/porcentagem/${id}`, { method: 'DELETE' }); await recarregarPorcentagens(); avisar('Porcentagem removida.'); }
   catch (e) { console.error(e); avisar('Erro ao remover a porcentagem.', true); }
 };
 
@@ -115,7 +115,7 @@ const salvarGeradora = async () => {
   if (!fGer.value.usina || !fGer.value.porcentagem) { msgGer.value = { t: 'err', txt: 'Preencha a usina e a porcentagem.' }; return; }
   salvandoGer.value = true;
   try {
-    await $fetch(`${API_BASE_URL}/porcentagem/`, { headers: TENANT_HEADERS, method: 'POST', body: { idUnidadeCompensa: atual.value.id, idGeradora: fGer.value.usina, porcentagem: fGer.value.porcentagem } });
+    await $fetch(`${API_BASE_URL}/porcentagem/`, { method: 'POST', body: { idUnidadeCompensa: atual.value.id, idGeradora: fGer.value.usina, porcentagem: fGer.value.porcentagem } });
     await recarregarPorcentagens();
     msgGer.value = { t: 'ok', txt: 'Geradora adicionada com sucesso.' };
     fGer.value = { usina: '', porcentagem: '' };
@@ -144,8 +144,8 @@ const salvarUnidade = async () => {
   salvandoUni.value = true;
   try {
     const body = editando.value ? { ...f, tenant: tenantUni.value } : { ...f };
-    if (editando.value) await $fetch(`${API_BASE_URL}/unidadecompensacao/${editando.value}`, { headers: TENANT_HEADERS, method: 'PUT', body });
-    else await $fetch(`${API_BASE_URL}/unidadecompensacao/`, { headers: TENANT_HEADERS, method: 'POST', body });
+    if (editando.value) await $fetch(`${API_BASE_URL}/unidadecompensacao/${editando.value}`, { method: 'PUT', body });
+    else await $fetch(`${API_BASE_URL}/unidadecompensacao/`, { method: 'POST', body });
     await recarregarUnidades();
     if (editando.value) { msgUni.value = { t: 'ok', txt: 'Unidade editada com sucesso.' }; }
     else { msgUni.value = { t: 'ok', txt: 'Unidade adicionada com sucesso.' }; fUni.value = vazio(); }
@@ -159,7 +159,7 @@ const excluindo = ref(false);
 const abrirExcluir = (u) => { atual.value = u; dlgExcluir.value = true; };
 const excluirUnidade = async () => {
   excluindo.value = true;
-  try { await $fetch(`${API_BASE_URL}/unidadecompensacao/${atual.value.id}`, { headers: TENANT_HEADERS, method: 'DELETE' }); await recarregarUnidades(); dlgExcluir.value = false; avisar('Unidade excluída.'); }
+  try { await $fetch(`${API_BASE_URL}/unidadecompensacao/${atual.value.id}`, { method: 'DELETE' }); await recarregarUnidades(); dlgExcluir.value = false; avisar('Unidade excluída.'); }
   catch (e) { console.error(e); avisar('Erro ao excluir a unidade.', true); }
   finally { excluindo.value = false; }
 };
@@ -172,7 +172,7 @@ const anoRel = ref(null);
 const buscarRelatorios = async () => {
   carregandoRel.value = true;
   try {
-    const r = await $fetch(`${API_BASE_URL}/relatoriocompensacao/`, { headers: TENANT_HEADERS, query: { idUnidadeCompensa: atual.value.id } });
+    const r = await $fetch(`${API_BASE_URL}/relatoriocompensacao/`, { query: { idUnidadeCompensa: atual.value.id } });
     relatorios.value = (r ?? []).filter(x => x.idUnidadeCompensa === atual.value.id);
   } catch (e) { console.error(e); relatorios.value = []; avisar('Erro ao carregar os relatórios.', true); }
   finally { carregandoRel.value = false; }
@@ -194,7 +194,7 @@ const abrirRelatorios = async (u) => {
 };
 const excluirRelatorio = async (r) => {
   if (!confirm(`Excluir o relatório de ${MESES[r.mes - 1]}/${r.ano}?`)) return;
-  try { await $fetch(`${API_BASE_URL}/relatoriocompensacao/${r.id}`, { headers: TENANT_HEADERS, method: 'DELETE' }); await buscarRelatorios(); avisar('Relatório excluído.'); }
+  try { await $fetch(`${API_BASE_URL}/relatoriocompensacao/${r.id}`, { method: 'DELETE' }); await buscarRelatorios(); avisar('Relatório excluído.'); }
   catch (e) { console.error(e); avisar('Erro ao excluir o relatório.', true); }
 };
 
@@ -230,14 +230,14 @@ const salvarRel = async () => {
   try {
     if (relEditando.value) {
       const { mes, ano, ...resto } = f;
-      await $fetch(`${API_BASE_URL}/relatoriocompensacao/${relEditando.value}`, { headers: TENANT_HEADERS, method: 'PUT', body: { tenant: relOrig.value.tenant, idUnidadeCompensa: relOrig.value.idUnidadeCompensa, mes, ano, ...resto } });
+      await $fetch(`${API_BASE_URL}/relatoriocompensacao/${relEditando.value}`, { method: 'PUT', body: { tenant: relOrig.value.tenant, idUnidadeCompensa: relOrig.value.idUnidadeCompensa, mes, ano, ...resto } });
       msgRel.value = { t: 'ok', txt: 'Relatório editado com sucesso.' };
     } else {
-      const existe = await $fetch(`${API_BASE_URL}/relatoriocompensacao/`, { headers: TENANT_HEADERS, query: { idUnidadeCompensa: atual.value.id, mes: f.mes, ano: f.ano } });
+      const existe = await $fetch(`${API_BASE_URL}/relatoriocompensacao/`, { query: { idUnidadeCompensa: atual.value.id, mes: f.mes, ano: f.ano } });
       if ((existe ?? []).some(r => r.idUnidadeCompensa === atual.value.id && r.mes === Number(f.mes) && r.ano === Number(f.ano))) {
         msgRel.value = { t: 'err', txt: `${MESES[f.mes - 1]}/${f.ano} já tem relatório lançado.` }; return;
       }
-      await $fetch(`${API_BASE_URL}/relatoriocompensacao/`, { headers: TENANT_HEADERS, method: 'POST', body: { idUnidadeCompensa: atual.value.id, ...f } });
+      await $fetch(`${API_BASE_URL}/relatoriocompensacao/`, { method: 'POST', body: { idUnidadeCompensa: atual.value.id, ...f } });
       msgRel.value = { t: 'ok', txt: 'Relatório enviado com sucesso.' };
     }
     if (dlgRelatorios.value) await buscarRelatorios();
