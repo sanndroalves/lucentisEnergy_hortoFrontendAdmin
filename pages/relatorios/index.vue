@@ -12,6 +12,7 @@ import RelatoriosInjetado from '~/components/relatorios/Injetado.vue';
 import RelatoriosGeral from '~/components/relatorios/Geral.vue';
 import RelatoriosConclusivo from '~/components/relatorios/conclusivo.vue';
 import RelatoriosCompensacao from '~/components/relatorios/Compensacao.vue';
+import RelatoriosConsumoFinanceiro from '~/components/relatorios/ConsumoFinanceiro.vue';
 
 useHead({ title: 'Relatórios' });
 definePageMeta({ middleware: 'sidebase-auth' });
@@ -31,6 +32,24 @@ const aba = computed({
   set: (v) => router.replace({ query: { ...router.currentRoute.value.query, aba: v || undefined } }),
 });
 const atual = computed(() => ABAS.find(a => a.v === aba.value) ?? (aba.value === COMPENSACAO.v ? COMPENSACAO : null));
+
+// Consumo tem duas partes: Faturas (kWh/R$ por UC e alertas) e Dados R$ (financeiro × ano anterior).
+// A parte fica na URL (?parte=rs).
+const PARTES_CONSUMO = [
+  { v: '', txt: 'Faturas', sub: 'Consumo e alertas por UC', comp: RelatoriosConsumo },
+  { v: 'rs', txt: 'Dados R$', sub: 'Contas, compensação e comparação com o ano anterior', comp: RelatoriosConsumoFinanceiro },
+];
+const parte = computed({
+  get: () => String(router.currentRoute.value.query.parte ?? route.query.parte ?? ''),
+  set: (v) => router.replace({ query: { ...router.currentRoute.value.query, parte: v || undefined } }),
+});
+const parteAtual = computed(() => PARTES_CONSUMO.find(p => p.v === parte.value) ?? PARTES_CONSUMO[0]);
+const bloco = computed(() => {
+  if (!atual.value) return null;
+  if (atual.value.v === 'consumo') return { key: `consumo-${parteAtual.value.v || 'faturas'}`, comp: parteAtual.value.comp };
+  return { key: atual.value.v, comp: atual.value.comp };
+});
+const irParaAba = (v) => router.replace({ query: { ...router.currentRoute.value.query, aba: v || undefined, parte: undefined } });
 </script>
 
 <template>
@@ -41,6 +60,7 @@ const atual = computed(() => ABAS.find(a => a.v === aba.value) ?? (aba.value ===
           <NuxtLink to="/">Início</NuxtLink><span class="sep">›</span><span>Gerenciamento</span><span class="sep">›</span>
           <NuxtLink v-if="atual" :to="{ query: {} }">Relatórios</NuxtLink><b v-else>Relatórios</b>
           <template v-if="atual"><span class="sep">›</span><b>{{ atual.txt }}</b></template>
+          <template v-if="aba === 'consumo'"><span class="sep">›</span><b>{{ parteAtual.txt }}</b></template>
         </nav>
         <h1 class="lx-title">Relatórios <span class="grad">energéticos</span></h1>
         <p class="lx-sub">Estatísticas detalhadas de usinas e unidades consumidoras</p>
@@ -57,7 +77,7 @@ const atual = computed(() => ABAS.find(a => a.v === aba.value) ?? (aba.value ===
     <!-- Abas -->
     <nav class="rl-abas" :class="{ compacto: atual }" aria-label="Tipo de relatório">
       <button v-for="a in ABAS" :key="a.v" class="rl-aba" :class="{ on: aba === a.v }" :aria-current="aba === a.v ? 'page' : undefined"
-        :style="{ '--c': `var(${a.c})`, '--c2': `var(${a.c2})` }" @click="aba = a.v">
+        :style="{ '--c': `var(${a.c})`, '--c2': `var(${a.c2})` }" @click="irParaAba(a.v)">
         <span class="rl-aba-ic">{{ a.ic }}</span>
         <span class="rl-aba-tx"><b>{{ a.txt }}</b><small>{{ a.sub }}</small></span>
       </button>
@@ -70,8 +90,15 @@ const atual = computed(() => ABAS.find(a => a.v === aba.value) ?? (aba.value ===
       <button class="lx-btn-ghost sm" @click="aba = ''">Fechar</button>
     </div>
 
+    <div v-if="aba === 'consumo'" class="rl-partes" role="tablist" aria-label="Parte do relatório de consumo">
+      <button v-for="p in PARTES_CONSUMO" :key="p.v" role="tab" class="rl-parte" :class="{ on: parteAtual.v === p.v }"
+        :aria-selected="parteAtual.v === p.v" @click="parte = p.v">
+        <b>{{ p.txt }}</b><small>{{ p.sub }}</small>
+      </button>
+    </div>
+
     <KeepAlive>
-      <component :is="atual.comp" v-if="atual" :key="atual.v" />
+      <component :is="bloco.comp" v-if="bloco" :key="bloco.key" />
     </KeepAlive>
   </div>
 </template>
@@ -104,6 +131,16 @@ const atual = computed(() => ABAS.find(a => a.v === aba.value) ?? (aba.value ===
 }
 .rl-escondido:hover, .rl-escondido.on { opacity: 1; color: var(--orange); background: rgba(255, 161, 46, .08); }
 .rl-escondido:focus-visible { outline: 2px solid #fff; opacity: 1; }
+
+/* partes da aba Consumo */
+.rl-partes { display: inline-flex; gap: 4px; padding: 4px; margin-bottom: 14px; border-radius: 14px; background: var(--card2); border: 1px solid var(--line); max-width: 100%; flex-wrap: wrap; }
+.rl-parte { all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; gap: 1px; padding: 8px 14px; border-radius: 10px; transition: background .2s, box-shadow .2s; }
+.rl-parte b { font-size: 13px; font-weight: 600; color: var(--mut); }
+.rl-parte small { font-size: 10.5px; color: var(--mut); opacity: .8; }
+.rl-parte:hover b { color: var(--tx); }
+.rl-parte.on { background: linear-gradient(135deg, color-mix(in srgb, var(--green) 22%, transparent), color-mix(in srgb, var(--teal) 10%, transparent)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--green) 55%, transparent); }
+.rl-parte.on b { color: var(--tx); }
+.rl-parte:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
 .rl-vazio { text-align: center; color: var(--mut); font-size: 13px; padding: 40px 12px; }
 .rl-comp-hd { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
