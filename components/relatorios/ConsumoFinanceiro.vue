@@ -18,8 +18,15 @@ import { ref, computed } from 'vue';
 import { API_BASE_URL } from '~/base/link';
 import { MESES, MESES_CURTO, ANOS_REL, DOZE, SECRETARIAS, secretariaTxt, nf, esperarPintura, exportarPDF, gerandoPDF } from '~/composables/useRelatorios';
 
-const OPCOES_SEC = [{ v: 'T', txt: 'Todas', desc: 'Todas as secretarias', c: 'var(--tx)' }, ...SECRETARIAS];
-const nomeSec = (v) => (v === 'T' ? 'Todas as secretarias' : secretariaTxt(v));
+// Grupos: Prédios (E, S, O) e IP (I, P) têm valores separados, então podem ser vistos juntos.
+const GRUPOS = [
+  { v: 'PR', txt: 'Prédios', desc: 'Educação, Saúde e Outros', nome: 'Prédios (Educação, Saúde e Outros)', cats: ['E', 'S', 'O'], c: 'var(--green)' },
+  { v: 'IP', txt: 'IP', desc: 'Iluminação pública e Praças', nome: 'IP (Iluminação e Praças)', cats: ['I', 'P'], c: 'var(--red)' },
+  { v: 'T', txt: 'Todas', desc: 'Todas as secretarias', nome: 'Todas as secretarias', cats: SECRETARIAS.map(x => x.v), c: 'var(--tx)' },
+];
+const OPCOES_SEC = SECRETARIAS;
+const nomeSec = (v) => GRUPOS.find(g => g.v === v)?.nome ?? secretariaTxt(v);
+const categorias = (v) => GRUPOS.find(g => g.v === v)?.cats ?? [v];
 const TOLERANCIA = 10; // ± % para considerar "na média"
 
 const secretaria = ref('');
@@ -51,7 +58,7 @@ const gerar = async () => {
   await esperarPintura();
   try {
     const a = Number(ano.value), s = secretaria.value;
-    const cats = s === 'T' ? SECRETARIAS.map(x => x.v) : [s];
+    const cats = categorias(s);
     const [listas, rA, rB] = await Promise.all([
       Promise.all(cats.map(c => $fetch(`${API_BASE_URL}/unidadecompensacao?categoria=${c}`))),
       $fetch(`${API_BASE_URL}/relatoriocompensacao?ano=${a}`),
@@ -261,10 +268,16 @@ const exportar = () => exportarPDF(resultado.value, `consumo-financeiro-${nomeSe
     <section class="lx-panel lx-mb">
       <div class="lx-filtros">
         <div class="lx-field">
-          <label>Secretaria</label>
-          <div class="lx-seg" role="radiogroup" aria-label="Secretaria">
-            <button v-for="s in OPCOES_SEC" :key="s.v" role="radio" :aria-checked="secretaria === s.v" :title="s.desc"
-              :class="{ on: secretaria === s.v }" :style="{ '--c': s.c }" @click="secretaria = s.v">{{ s.txt }}</button>
+          <label>Grupo ou secretaria</label>
+          <div class="cf-secs" role="radiogroup" aria-label="Grupo ou secretaria">
+            <div class="lx-seg">
+              <button v-for="s in GRUPOS" :key="s.v" role="radio" :aria-checked="secretaria === s.v" :title="s.desc"
+                :class="{ on: secretaria === s.v }" :style="{ '--c': s.c }" @click="secretaria = s.v">{{ s.txt }}</button>
+            </div>
+            <div class="lx-seg">
+              <button v-for="s in OPCOES_SEC" :key="s.v" role="radio" :aria-checked="secretaria === s.v" :title="s.desc"
+                :class="{ on: secretaria === s.v }" :style="{ '--c': s.c }" @click="secretaria = s.v">{{ s.txt }}</button>
+            </div>
           </div>
         </div>
         <div class="lx-field">
@@ -503,6 +516,7 @@ const exportar = () => exportarPDF(resultado.value, `consumo-financeiro-${nomeSe
 
 <style scoped>
 .cf-dica { font-size: 12px; color: var(--mut); margin-top: 12px; }
+.cf-secs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cf-skel { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
 .cf-skel .lx-skel { height: 86px; }
 .cf-hd { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
