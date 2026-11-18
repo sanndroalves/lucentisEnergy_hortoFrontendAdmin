@@ -7,6 +7,10 @@
 // (notebook, Agendador de Tarefas a cada hora) — modo AGENTE. Por isso uma execução
 // pode ficar "aguardando o coletor" até o notebook rodar.
 //
+// Baixa tensão (BT) e média tensão (MT) são coletas separadas: o seletor no topo filtra a página inteira.
+// MT é coletada pelo coletor_mt.py (navegador no notebook com a sessão do portal aberta pelo usuário):
+// não usa refresh_token; quando a sessão expira, a execução espera um novo login (executar_mt.bat --login).
+//
 // Todas as rotas exigem login (token do usuário no header Authorization).
 // O topo é atualizado a cada 5 s enquanto há execução ativa (60 s sem execução).
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
@@ -52,7 +56,7 @@ const EVENTO = {
 const ERRO_TIPO = {
   AUTENTICACAO: 'Sessão CPFL expirada/inválida', BLOQUEIO_PORTAL: 'Bloqueio do portal (Cloudflare/CAPTCHA)',
   MUDANCA_INTERFACE: 'Possível mudança na API da CPFL', INDISPONIVEL: 'CPFL indisponível', UC_NAO_ENCONTRADA: 'UC não localizada na CPFL',
-  RECUSADO_PORTAL: 'CPFL recusou o atendimento da UC', CANCELADA: 'Cancelada', ABORTADA: 'Abortada (sessão/bloqueio)', INTERNO: 'Erro interno', ARMAZENAMENTO: 'Falha ao gravar o PDF (R2)',
+  RECUSADO_PORTAL: 'CPFL recusou o atendimento da UC', INTERVENCAO_MT: 'Aguardando login no portal MT', CANCELADA: 'Cancelada', ABORTADA: 'Abortada (sessão/bloqueio)', INTERNO: 'Erro interno', ARMAZENAMENTO: 'Falha ao gravar o PDF (R2)',
 };
 const de = (mapa, k) => mapa[k] || { t: k || '—', c: 'var(--mut)' };
 
@@ -84,6 +88,12 @@ const toast = ref(null);
 let tT = 0;
 const avisar = (txt, err = false) => { toast.value = { txt, err }; clearTimeout(tT); tT = setTimeout(() => { toast.value = null; }, 4000); };
 
+// ═══════════════ tensão (BT / MT) ═══════════════
+const TENSOES = [{ k: 'BT', t: 'Baixa tensão', c: 'var(--teal)' }, { k: 'MT', t: 'Média tensão', c: 'var(--purple)' }];
+const tensao = ref('BT');
+try { const s = localStorage.getItem('lx-faturas-tensao'); if (s === 'BT' || s === 'MT') tensao.value = s; } catch { /* sem storage */ }
+const ehMT = computed(() => tensao.value === 'MT');
+
 // ═══════════════ resumo (topo) ═══════════════
 const resumo = ref(null);
 const erroResumo = ref(null);
@@ -92,7 +102,8 @@ const cred = computed(() => resumo.value?.credencial || {});
 const agenteModo = computed(() => cred.value.modo_coleta === 'AGENTE');
 
 async function carregarResumo() {
-  try { resumo.value = await api('resumo/'); erroResumo.value = null; }
+  const t = tensao.value;
+  try { const r = await api(`resumo/?tensao=${t}`); if (t === tensao.value) { resumo.value = r; erroResumo.value = null; } }
   catch (e) { console.error(e); erroResumo.value = erroApi(e, e?.statusCode === 404 ? 'O backend ainda não tem o módulo de faturas (faça o deploy e o migrate).' : 'Falha ao carregar o resumo.'); }
 }
 
@@ -109,10 +120,22 @@ const sessaoExpira = computed(() => {
   return { t: rel(iso), c: d < 0 ? 'var(--red)' : d < 2 ? 'var(--orange)' : 'var(--green)', vencida: d < 0 };
 });
 
+// credencial utilizável: BT precisa do refresh_token; MT só da credencial ativa (a sessão é do navegador)
+const credOk = computed(() => (ehMT.value ? cred.value.ativo === true : cred.value.configurada && cred.value.ativo));
+const mtLogin = computed(() => (ehMT.value ? resumo.value?.mt_aguardando_login : null));
+
 // avisos que exigem ação
 const alertas = computed(() => {
   const r = resumo.value, c = cred.value, out = [];
   if (!r) return out;
+  if (ehMT.value) {
+    if (c.ativo !== true) out.push({ t: 'warn', txt: 'A credencial CPFL está desativada ou não existe: a coleta MT não roda.' });
+    if (mtLogin.value) out.push({ t: 'err', txt: `Coleta MT pausada ${rel(mtLogin.value.desde)}: a sessão do portal expirou ou o portal pediu verificação. No notebook, rode executar_mt.bat --login, entre na janela e depois rode executar_mt.bat.` });
+    if (c.ativo && contatoAgente.value.c === 'var(--red)' && ativa.value)
+      out.push({ t: 'warn', txt: `O notebook não fala com o Lucentis ${c.ultimo_contato_agente ? contatoAgente.value.t : 'desde a instalação'}. Verifique se ele está ligado e a tarefa "Lucentis - Coletor CPFL MT" ativa.` });
+    if (r.armazenamento === 'LOCAL') out.push({ t: 'warn', txt: 'Os PDFs estão sendo gravados no disco do servidor (R2 não configurado). No Railway esse disco é apagado a cada deploy.' });
+    return out;
+  }
   if (!c.configurada) out.push({ t: 'err', txt: 'Credencial CPFL não configurada. Cadastre o refresh_token em Admin › Credenciais CPFL.' });
   else if (!c.ativo) out.push({ t: 'warn', txt: 'A credencial CPFL está desativada: a coleta automática não roda.' });
   if (c.falhas_consecutivas > 0) out.push({ t: 'err', txt: `Falha na sessão CPFL (${c.falhas_consecutivas}x): ${c.ultimo_erro || 'sem detalhe'}. Faça login no portal Poder Público e cole o novo refresh_token no Admin.` });
@@ -123,7 +146,7 @@ const alertas = computed(() => {
   if (r.armazenamento === 'LOCAL') out.push({ t: 'warn', txt: 'Os PDFs estão sendo gravados no disco do servidor (R2 não configurado). No Railway esse disco é apagado a cada deploy.' });
   return out;
 });
-const podeSolicitar = computed(() => resumo.value && cred.value.configurada && cred.value.ativo && !ativa.value);
+const podeSolicitar = computed(() => resumo.value && credOk.value && !ativa.value);
 
 // ═══════════════ abas ═══════════════
 const aba = ref('execucoes');
@@ -141,7 +164,7 @@ const exec = ref({ lista: [], total: 0, carregando: false, erro: null });
 async function carregarExecucoes(mais = false) {
   exec.value.carregando = true;
   try {
-    const r = await api(`coletas/?limit=${PAG_EX}&offset=${mais ? exec.value.lista.length : 0}`);
+    const r = await api(`coletas/?limit=${PAG_EX}&offset=${mais ? exec.value.lista.length : 0}&tensao=${tensao.value}`);
     exec.value.lista = mais ? [...exec.value.lista, ...r.results] : r.results;
     exec.value.total = r.count; exec.value.erro = null;
   } catch (e) { console.error(e); exec.value.erro = erroApi(e, 'Falha ao carregar as execuções.'); }
@@ -156,7 +179,7 @@ const ff = ref({ busca: '', ano: '', situacao: '' });
 const fat = ref({ lista: [], total: 0, offset: 0, carregando: false, erro: null });
 async function carregarFaturas(offset = 0) {
   fat.value.carregando = true;
-  const q = new URLSearchParams({ limit: PAG_FT, offset });
+  const q = new URLSearchParams({ limit: PAG_FT, offset, tensao: tensao.value });
   if (ff.value.busca.trim()) q.set('busca', ff.value.busca.trim());
   if (ff.value.ano) q.set('ano', ff.value.ano);
   if (ff.value.situacao) q.set('situacao', ff.value.situacao);
@@ -173,7 +196,7 @@ const aus = ref({ lista: [], total: 0, offset: 0, carregando: false, erro: null 
 const ausAberta = ref(null);
 async function carregarAusentes(offset = 0) {
   aus.value.carregando = true;
-  const q = new URLSearchParams({ limit: PAG_AU, offset });
+  const q = new URLSearchParams({ limit: PAG_AU, offset, tensao: tensao.value });
   if (fa.value.busca.trim()) q.set('busca', fa.value.busca.trim());
   if (fa.value.motivo) q.set('motivo', fa.value.motivo);
   if (!fa.value.resolvidas) q.set('resolvida', 'false');
@@ -257,7 +280,7 @@ async function abrirSolicitar() {
 const ucsFiltradas = computed(() => {
   const b = sol.value.busca.trim().toLowerCase();
   return (unidades.value || [])
-    .filter(u => ['L', 'D'].includes(u.status) && (u.tensao || 'BT') === 'BT') // mesma regra do backend
+    .filter(u => ['L', 'D'].includes(u.status) && (u.tensao || 'BT') === tensao.value) // mesma regra do backend
     .filter(u => !b || String(u.uc).includes(b) || String(u.nome || '').toLowerCase().includes(b))
     .sort((a, z) => String(a.nome).localeCompare(String(z.nome)));
 });
@@ -270,9 +293,9 @@ async function solicitar() {
   if (s.modo === 'algumas' && !s.sel.size) { s.msg = 'Selecione pelo menos uma UC.'; return; }
   s.enviando = true; s.msg = null;
   try {
-    const r = await api('coletas/', { method: 'POST', body: { unidades: s.modo === 'algumas' ? [...s.sel] : [] } });
+    const r = await api('coletas/', { method: 'POST', body: { tensao: tensao.value, unidades: s.modo === 'algumas' ? [...s.sel] : [] } });
     s.aberto = false;
-    avisar(r.criada ? `Coleta #${r.id} enfileirada.` : `Já existe uma coleta em andamento (#${r.id}).`, !r.criada);
+    avisar(r.criada ? `Coleta ${tensao.value} #${r.id} enfileirada.` : `Já existe uma coleta ${tensao.value} em andamento (#${r.id}).`, !r.criada);
     aba.value = 'execucoes';
     await Promise.all([carregarResumo(), carregarExecucoes()]);
     abrirDetalhe(r.id);
@@ -308,6 +331,18 @@ onMounted(async () => {
   ativaAntes.value = ativa.value?.id ?? null;
   timer = setTimeout(tick, ativa.value ? 5000 : 60000);
 });
+// troca BT/MT: recarrega tudo do zero
+watch(tensao, async (v) => {
+  try { localStorage.setItem('lx-faturas-tensao', v); } catch { /* sem storage */ }
+  resumo.value = null; det.value.aberto = false; ausAberta.value = null;
+  exec.value = { lista: [], total: 0, carregando: false, erro: null };
+  fat.value = { ...fat.value, lista: [], total: 0, offset: 0 };
+  aus.value = { ...aus.value, lista: [], total: 0, offset: 0 };
+  clearTimeout(timer);
+  await Promise.all([carregarResumo(), carregarExecucoes(), carregarFaturas(0), carregarAusentes(0)]);
+  ativaAntes.value = ativa.value?.id ?? null;
+  timer = setTimeout(tick, ativa.value ? 5000 : 60000);
+});
 onBeforeUnmount(() => { clearTimeout(timer); clearInterval(relogio); clearTimeout(tT); clearTimeout(tBusca); });
 
 // ── KPIs ──
@@ -329,7 +364,7 @@ const irKpi = (k) => {
 };
 const aguardandoColetor = computed(() => {
   const a = ativa.value;
-  return a && agenteModo.value && !a.progresso?.ucs_processadas && !a.progresso?.por_status?.EM_ANDAMENTO;
+  return a && (agenteModo.value || ehMT.value) && !a.progresso?.ucs_processadas && !a.progresso?.por_status?.EM_ANDAMENTO;
 });
 </script>
 
@@ -344,9 +379,12 @@ const aguardandoColetor = computed(() => {
         <p class="lx-sub">Coleta automática das faturas pagas e em aberto · execuções, monitoramento e histórico</p>
       </div>
       <div class="lx-head-actions">
+        <div class="lx-seg ft-tensao" role="tablist" aria-label="Tensão">
+          <button v-for="t in TENSOES" :key="t.k" role="tab" :aria-selected="tensao === t.k" :class="{ on: tensao === t.k }" :style="{ '--c': t.c }" @click="tensao = t.k">{{ t.t }}</button>
+        </div>
         <button class="lx-btn-ghost" style="--c:var(--teal)" @click="atualizarTudo">↻ Atualizar</button>
         <button class="lx-btn" style="--c1:var(--purple);--c2:var(--teal)" :disabled="!podeSolicitar"
-          :title="ativa ? 'Já existe uma execução em andamento' : ''" @click="abrirSolicitar">+ Solicitar coleta</button>
+          :title="ativa ? 'Já existe uma execução em andamento' : ''" @click="abrirSolicitar">+ Solicitar coleta {{ tensao }}</button>
       </div>
     </header>
 
@@ -373,7 +411,8 @@ const aguardandoColetor = computed(() => {
           <span v-for="(n, s) in ativa.progresso.por_status" :key="s" class="lx-pill" :style="{ '--c': de(ST_UC, s).c }">{{ de(ST_UC, s).t }} {{ n }}</span>
           <span class="lx-pill" style="--c:var(--green)">{{ ativa.progresso.faturas_ate_agora }} fatura(s) nova(s)</span>
         </div>
-        <p v-if="aguardandoColetor" class="ft-note">Aguardando o coletor local: o notebook roda a cada hora (ou execute o <b>executar.bat</b>).</p>
+        <p v-if="mtLogin" class="ft-note err">Pausada: aguardando login no portal MT (<b>executar_mt.bat --login</b>).</p>
+        <p v-else-if="aguardandoColetor" class="ft-note">Aguardando o coletor local: o notebook roda a cada hora (ou execute o <b>{{ ehMT ? 'executar_mt.bat' : 'executar.bat' }}</b>).</p>
         <p class="ft-meta">Criada {{ rel(ativa.criado_em) }}<template v-if="ativa.iniciado_em"> · rodando há {{ dur(ativa.iniciado_em) }}</template><template v-if="ativa.solicitado_por"> · {{ ativa.solicitado_por }}</template></p>
         <div class="ft-card-ac">
           <button class="lx-btn sm" style="--c1:var(--teal);--c2:var(--purple)" @click="abrirDetalhe(ativa.id)">Acompanhar</button>
@@ -399,8 +438,25 @@ const aguardandoColetor = computed(() => {
         <p v-else class="ft-meta">Nenhuma coleta foi executada ainda.</p>
       </article>
 
-      <!-- coletor e sessão -->
-      <article class="ft-card" style="--c:var(--purple);--c2:var(--teal)">
+      <!-- coletor e sessão: MT (sessão do navegador no notebook) -->
+      <article v-if="ehMT" class="ft-card" style="--c:var(--purple);--c2:var(--teal)">
+        <div class="ft-card-hd">
+          <span class="ft-lb">Coletor MT e sessão do portal</span>
+          <span v-if="resumo" class="lx-pill" :style="{ '--c': cred.ativo !== true || mtLogin ? 'var(--red)' : 'var(--green)' }">
+            <i></i>{{ cred.ativo !== true ? 'Desativada' : mtLogin ? 'Precisa de login' : 'Ativa' }}
+          </span>
+        </div>
+        <div v-if="resumo" class="lx-dl ft-dl">
+          <div><span>Quem acessa o portal</span><b>Coletor MT (navegador no notebook)</b></div>
+          <div><span>Último contato do notebook</span><b :style="{ color: contatoAgente.c }">{{ contatoAgente.t }}</b></div>
+          <div><span>Sessão do portal</span><b :style="{ color: mtLogin ? 'var(--red)' : 'var(--green)' }">{{ mtLogin ? `expirou ${rel(mtLogin.desde)}` : 'sem pendência de login' }}</b></div>
+          <div><span>Login (quando pedir)</span><b class="lx-mono">executar_mt.bat --login</b></div>
+        </div>
+        <span v-else class="lx-skel ft-sk2"></span>
+      </article>
+
+      <!-- coletor e sessão: BT (refresh_token) -->
+      <article v-else class="ft-card" style="--c:var(--purple);--c2:var(--teal)">
         <div class="ft-card-hd">
           <span class="ft-lb">Coletor e sessão CPFL</span>
           <span v-if="resumo" class="lx-pill" :style="{ '--c': cred.configurada && cred.ativo && !cred.falhas_consecutivas ? 'var(--green)' : 'var(--red)' }">
@@ -429,8 +485,13 @@ const aguardandoColetor = computed(() => {
             <p v-if="resumo.agendamento.ultima" class="ft-meta">Última disparada {{ rel(resumo.agendamento.ultima) }}</p>
           </template>
           <p v-else class="ft-meta">Agendamento não encontrado (rode o migrate do app faturas).</p>
-          <ul class="ft-regras">
-            <li>Busca todo o histórico que a CPFL tiver, só as competências que faltam, até o mês anterior</li>
+          <ul v-if="ehMT" class="ft-regras">
+            <li>Portal Média e alta tensão: contas em aberto e quitadas desde jan/2021, só as que faltam, até o mês anterior</li>
+            <li>Consumo = ponta × 1,6 + fora ponta · saldo = ponta + fora ponta + a expirar</li>
+            <li>PDFs de 2021–2022 são validados e não guardados; os demais {{ resumo.armazenamento === 'R2' ? 'no Cloudflare R2' : 'no disco do servidor' }}</li>
+          </ul>
+          <ul v-else class="ft-regras">
+            <li>Busca o histórico da CPFL desde jan/2021, só as competências que faltam, até o mês anterior</li>
             <li>Atualiza a situação de pagamento sem duplicar faturas</li>
             <li>PDFs guardados {{ resumo.armazenamento === 'R2' ? 'no Cloudflare R2' : 'no disco do servidor' }}</li>
           </ul>
@@ -540,7 +601,8 @@ const aguardandoColetor = computed(() => {
                 <td class="lx-mono">{{ f.numero_conta_energia }}</td>
                 <td class="ft-sub">{{ dataHora(f.coletado_em) }}</td>
                 <td class="r">
-                  <button class="lx-icon-btn ft-ib" style="--c:var(--teal)" title="Abrir PDF" :disabled="abrindoPdf === f.id" @click="abrirPdf(f)">
+                  <span v-if="f.tem_pdf === false" class="ft-sub" title="PDF removido do armazenamento; os dados continuam no sistema">sem PDF</span>
+                  <button v-else class="lx-icon-btn ft-ib" style="--c:var(--teal)" title="Abrir PDF" :disabled="abrindoPdf === f.id" @click="abrirPdf(f)">
                     <span v-if="abrindoPdf === f.id" class="lx-spin" style="width:12px;height:12px"></span>
                     <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
                   </button>
@@ -713,7 +775,7 @@ const aguardandoColetor = computed(() => {
     </LxDialog>
 
     <!-- ═══ dialog: solicitar coleta ═══ -->
-    <LxDialog v-model="sol.aberto" titulo="Solicitar coleta de faturas" subtitulo="A solicitação só entra na fila; acompanhe o andamento nesta página"
+    <LxDialog v-model="sol.aberto" :titulo="`Solicitar coleta de faturas · ${ehMT ? 'média tensão' : 'baixa tensão'}`" subtitulo="A solicitação só entra na fila; acompanhe o andamento nesta página"
       icone="⇣" cor="var(--purple)" :largura="640">
       <div v-if="sol.msg" class="lx-alert err">{{ sol.msg }}</div>
       <div class="lx-field full"><label>Unidades</label>
@@ -723,9 +785,15 @@ const aguardandoColetor = computed(() => {
         </div>
       </div>
       <ul class="ft-regras ft-regras-dlg">
-        <li>Busca todo o histórico que a CPFL tiver (mesmo antes do cadastro da UC), só as competências que faltam no Lucentis, até o mês anterior.</li>
-        <li>Entram UCs de baixa tensão ligadas e desligadas (em manutenção e MT ficam de fora). Faturas já coletadas só têm a situação de pagamento atualizada.</li>
-        <li v-if="agenteModo">Quem acessa a CPFL é o coletor do notebook (roda a cada hora). Para começar já, execute o <b>executar.bat</b>.</li>
+        <li>Busca o histórico da CPFL desde jan/2021 (mesmo antes do cadastro da UC), só as competências que faltam no Lucentis, até o mês anterior.</li>
+        <template v-if="ehMT">
+          <li>Entram UCs de média tensão ligadas e desligadas (em manutenção ficam de fora). Faturas já coletadas só têm a situação de pagamento atualizada.</li>
+          <li>Quem acessa o portal é o coletor MT do notebook, com a sessão que você abriu (roda a cada hora). Para começar já, execute o <b>executar_mt.bat</b>; se pedir login, <b>executar_mt.bat --login</b>.</li>
+        </template>
+        <template v-else>
+          <li>Entram UCs de baixa tensão ligadas e desligadas (em manutenção ficam de fora; MT tem coleta própria). Faturas já coletadas só têm a situação de pagamento atualizada.</li>
+          <li v-if="agenteModo">Quem acessa a CPFL é o coletor do notebook (roda a cada hora). Para começar já, execute o <b>executar.bat</b>.</li>
+        </template>
       </ul>
       <template v-if="sol.modo === 'algumas'">
         <div class="ft-sel-hd">
@@ -792,6 +860,7 @@ const aguardandoColetor = computed(() => {
 .ft-regras-dlg { margin: 14px 0; padding: 12px 14px; border-radius: 14px; background: var(--card2); border: 1px dashed var(--line); font-size: 12.5px; }
 .ft-regras-dlg li::before { background: var(--purple); }
 
+.ft-tensao button { white-space: nowrap; }
 .ft-pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 0 0 var(--teal); animation: ftPulse 1.6s infinite; display: inline-block; }
 @keyframes ftPulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--teal) 70%, transparent); } 70% { box-shadow: 0 0 0 8px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
 
