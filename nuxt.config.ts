@@ -3,9 +3,21 @@ export default defineNuxtConfig({
   // Se estiver usando server-side rendering 
   ssr: false,
 
-  serverMiddleware: [
-    '~/server/api/'
-  ],
+  app: {
+    head: {
+      link: [
+        { rel: 'icon', type: 'image/x-icon', href: '/favicon.ico' },
+        // Ícone usado pelo iPhone/iPad ao "Adicionar à Tela de Início" no Safari
+        { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' },
+      ],
+      meta: [
+        { name: 'apple-mobile-web-app-title', content: 'Lucentis' },
+        { name: 'apple-mobile-web-app-capable', content: 'yes' },
+        { name: 'mobile-web-app-capable', content: 'yes' },
+        { name: 'apple-mobile-web-app-status-bar-style', content: 'default' },
+      ],
+    },
+  },
 
   typescript: {
     shim: false
